@@ -107,3 +107,35 @@ def test_loop_survives_a_backend_error_during_a_command(tmp_path, capsys, monkey
     out = capsys.readouterr().out
     assert "[error]" in out  # the failure surfaced and the loop kept going to "exit"
     assert store.get_notes() == []  # still no half-written note
+
+
+class _EchoLLM:
+    def generate(self, prompt: str) -> str:
+        return f"echo: {prompt}"
+
+
+def test_recall_with_no_matches_reports_empty(tmp_path, capsys, fake_embedder):
+    store, vector = _backends(tmp_path)
+
+    _handle_command(":recall anything", store, vector, fake_embedder)
+
+    assert "(no matches)" in capsys.readouterr().out
+
+
+def test_notes_on_empty_store_reports_empty(tmp_path, capsys, fake_embedder):
+    store, vector = _backends(tmp_path)
+
+    _handle_command(":notes", store, vector, fake_embedder)
+
+    assert "(no notes yet)" in capsys.readouterr().out
+
+
+def test_loop_chat_turn_prints_model_reply(tmp_path, capsys, fake_embedder, monkeypatch):
+    store, vector = _backends(tmp_path)
+    orchestrator = Orchestrator(_EchoLLM())
+    lines = iter(["hello there", "exit"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
+
+    _loop(orchestrator, store, vector, fake_embedder)
+
+    assert "jarvis> echo: hello there" in capsys.readouterr().out

@@ -43,3 +43,15 @@ def test_ensure_dirs_creates_paths(tmp_path, monkeypatch):
 
     assert db.parent.is_dir()
     assert vec.is_dir()
+
+
+def test_ensure_dirs_is_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setenv("JARVIS_DB_PATH", str(tmp_path / "d" / "jarvis.db"))
+    monkeypatch.setenv("JARVIS_VECTOR_DIR", str(tmp_path / "v"))
+    cfg = Config()
+
+    cfg.ensure_dirs()
+    cfg.ensure_dirs()  # second call must not raise
+
+    assert (tmp_path / "d").is_dir()
+    assert (tmp_path / "v").is_dir()

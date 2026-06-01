@@ -56,3 +56,15 @@ def test_wal_journal_mode_is_enabled(tmp_path):
     mode = store._conn.execute("PRAGMA journal_mode").fetchone()[0]
 
     assert mode.lower() == "wal"
+
+
+def test_note_timestamp_round_trips_from_disk(tmp_path):
+    path = tmp_path / "jarvis.db"
+    first = SQLiteStructuredStore(path)
+    saved = first.save_note("with a timestamp")
+    first.close()
+
+    fetched = SQLiteStructuredStore(path).get_notes()[0]
+
+    assert fetched.created_at == saved.created_at  # tz-aware, microsecond fidelity
+    assert fetched.created_at.tzinfo is not None

@@ -49,3 +49,13 @@ def test_query_on_empty_store_returns_no_hits(tmp_path, fake_embedder):
     store = ChromaVectorStore(tmp_path / "chroma")
 
     assert store.query(fake_embedder.embed("anything"), k=5) == []
+
+
+def test_query_k_larger_than_collection_is_clamped(tmp_path, fake_embedder):
+    store = ChromaVectorStore(tmp_path / "chroma")
+    for i, text in enumerate(["one apple", "two banana"]):
+        store.add(id=str(i), text=text, embedding=fake_embedder.embed(text))
+
+    hits = store.query(fake_embedder.embed("one apple"), k=10)
+
+    assert len(hits) == 2
