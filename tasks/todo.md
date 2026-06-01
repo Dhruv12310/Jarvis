@@ -23,11 +23,11 @@ acceptance/verification in `tasks/plan.md`. Order is strict: 0 → A → B → C
 
 ### ▸ Checkpoint: Brain proven — units green w/o Ollama, manual chat returns a reply, review before stores
 
-## [ ] Task B — StructuredStore + SQLite  · `feat(stores): StructuredStore interface + SQLite notes (WAL)`
-- [ ] `stores/structured.py` — `StructuredStore` ABC (`save_note`, `get_notes`) + frozen `Note`
-- [ ] `stores/sqlite_store.py` — `notes` table on init, `PRAGMA journal_mode=WAL`; **only** raw SQL here
-- [ ] `cli.py` — `:note <text>` save, `:notes` list (via interface, no SQL in CLI)
-- [ ] Verify: `test_structured_store.py` (temp DB) round-trip green; manual save→list persists across restart; `ruff` clean
+## [x] Task B — StructuredStore + SQLite  ·  `feat(stores): StructuredStore interface and SQLite notes`
+- [x] `stores/structured.py` — `StructuredStore` ABC (`save_note`, `get_notes`) + frozen `Note`
+- [x] `stores/sqlite_store.py` — `notes` table on init, `PRAGMA journal_mode=WAL`; **only** raw SQL here
+- [x] `cli.py` — `:note <text>` save, `:notes` list (via interface, no SQL in CLI)
+- [x] Verify: `test_structured_store.py` (temp DB) round-trip + persistence green; `test_cli.py` dispatch green; `ruff` clean (20 passing). Fully offline, no Ollama needed.
 
 ## [ ] Task C — VectorStore + Chroma + embedder  · `feat(stores): VectorStore interface + Chroma + local embedder`
 - [ ] (source-driven) confirm current `ollama` embeddings method name
