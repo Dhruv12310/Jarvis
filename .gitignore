@@ -1,0 +1,43 @@
+# --- Reference clones (each has its own .git history — not part of this repo) ---
+/agent-skills/
+/andrej-karpathy-skills/
+/mulch/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# --- Jarvis runtime data (SQLite db + Chroma vector index; regenerated, never committed) ---
+/data/
+
+# --- Secrets / environment ---
+.env
+.env.*
+!.env.example
+
+# --- Claude Code local (personal, not shared) ---
+.claude/settings.local.json
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+*.swp
+
+# NOTE: .mulch/ is intentionally NOT ignored — committing it is the whole point.

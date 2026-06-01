@@ -1,0 +1,49 @@
+# Phase 0 — TODO
+
+Tracking list for `/build`. One slice per commit; check sub-items as they pass. Full detail +
+acceptance/verification in `tasks/plan.md`. Order is strict: 0 → A → B → C → D.
+
+---
+
+## [ ] Task 0 — Scaffold + initial commit  · `chore: initial commit — spec, constitution, scaffold`
+- [ ] `jarvis/` importable; `jarvis/config.py` — one config object, `JARVIS_*` env-overridable, loads `.env`, makes `data/`
+- [ ] `pyproject.toml` — pkg + `python-dotenv`, `[dev] = pytest, ruff`, ruff/pytest config + `integration` marker
+- [ ] `.env.example` written; `.env` git-ignored
+- [ ] Verify: `pip install -e ".[dev]"`; `config.llm_model == "qwen3:14b"`; `ruff check .` + `pytest -q` green
+- [ ] Verify: initial commit made; `git status` clean (no clones/data)
+
+## [ ] Task A — Brain path  · `feat(core): ollama-backed orchestrator + CLI chat loop`
+- [ ] (source-driven) confirm current `ollama` generation method name
+- [ ] `llm/client.py` — `LLMClient` protocol + `OllamaClient.generate`
+- [ ] `orchestrator.py` — `Orchestrator.chat(text)` → `llm.generate(text)`, nothing else
+- [ ] `cli.py` + `__main__.py` — `python -m jarvis` REPL; non-empty reply; clean exit
+- [ ] `pyproject.toml` += `ollama`
+- [ ] Verify: `test_orchestrator.py` (FakeLLMClient) green, no network; manual chat works; `ruff` clean
+
+### ▸ Checkpoint: Brain proven — units green w/o Ollama, manual chat returns a reply, review before stores
+
+## [ ] Task B — StructuredStore + SQLite  · `feat(stores): StructuredStore interface + SQLite notes (WAL)`
+- [ ] `stores/structured.py` — `StructuredStore` ABC (`save_note`, `get_notes`) + frozen `Note`
+- [ ] `stores/sqlite_store.py` — `notes` table on init, `PRAGMA journal_mode=WAL`; **only** raw SQL here
+- [ ] `cli.py` — `:note <text>` save, `:notes` list (via interface, no SQL in CLI)
+- [ ] Verify: `test_structured_store.py` (temp DB) round-trip green; manual save→list persists across restart; `ruff` clean
+
+## [ ] Task C — VectorStore + Chroma + embedder  · `feat(stores): VectorStore interface + Chroma + local embedder`
+- [ ] (source-driven) confirm current `ollama` embeddings method name
+- [ ] `llm/embedder.py` — `Embedder` protocol + `OllamaEmbedder.embed`
+- [ ] `stores/vector.py` — `VectorStore` ABC (`add(...metadata=None)`, `query`) + frozen `VectorHit`
+- [ ] `stores/chroma_store.py` — persistent client, collection w/ **no** `embedding_function`, explicit `embeddings=`; **only** `chromadb` import here
+- [ ] `cli.py` — `:note` also embeds; `:recall <query>` returns top hit(s)
+- [ ] `pyproject.toml` += `chromadb`
+- [ ] Verify: `test_vector_store.py` (temp dir + deterministic fake embedder) top-hit green; manual `:recall` works; `ruff` clean
+
+### ▸ Checkpoint: Both stores proven — units green w/o Ollama, note saved→listed→recalled, review before glue
+
+## [ ] Task D — DoD self-test + integration + boundary guards  · `test(core): Phase 0 DoD self-test + boundary guards`
+- [ ] `selftest.py` + `python -m jarvis selftest` — live `generate` (non-empty) + both round-trips on seeded distinct notes; `PASS`/`FAIL`
+- [ ] `__main__.py` — subcommand dispatch (`selftest`)
+- [ ] `test_selftest.py` — `@pytest.mark.integration`, auto-skips if Ollama down
+- [ ] `test_boundaries.py` — no SQL outside `sqlite_store.py`; no `chromadb` outside `chroma_store.py`; declared deps ⊆ approved set
+- [ ] Verify: `pytest -q` green w/o Ollama; `pytest -q -m integration` green w/ Ollama; `selftest` PASS; `ruff` clean
+
+### ▸ Checkpoint: Phase 0 complete — all SPEC.md DoD met → `/test` → `/review` → `/code-simplify` → `/ship`
