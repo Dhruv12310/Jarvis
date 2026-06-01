@@ -19,7 +19,7 @@ acceptance/verification in `tasks/plan.md`. Order is strict: 0 → A → B → C
 - [x] `cli.py` + `__main__.py` — `python -m jarvis` REPL; clean exit
 - [x] `pyproject.toml` += `ollama`
 - [x] Verify: `test_orchestrator.py` (FakeLLMClient) green (10 passing), no network; `ruff` clean; wiring smoke OK
-- [ ] PENDING Ollama: live `python -m jarvis` returns a non-empty reply (needs Ollama running + `qwen3:14b` pulled)
+- [x] LIVE: `python -m jarvis` chat returns a real reply ("Hello, Dhruv!" from qwen3:14b)
 
 ### ▸ Checkpoint: Brain proven — units green w/o Ollama, manual chat returns a reply, review before stores
 
@@ -37,7 +37,7 @@ acceptance/verification in `tasks/plan.md`. Order is strict: 0 → A → B → C
 - [x] `cli.py` — `:note` also embeds; `:recall <query>` returns top hit(s)
 - [x] `pyproject.toml` += `chromadb`
 - [x] Verify: `test_vector_store.py` (temp dir + deterministic fake embedder) top-hit green; `test_cli.py` full save/embed/recall green; `ruff` clean (26 passing). Offline.
-- [ ] PENDING Ollama: live `:recall` with real `nomic-embed-text` embeddings (needs Ollama running + model pulled)
+- [x] LIVE: real `nomic-embed-text` similarity-read returns the right note (verified via selftest)
 
 ### ▸ Checkpoint: Both stores proven — units green w/o Ollama, note saved→listed→recalled, review before glue
 
@@ -47,6 +47,6 @@ acceptance/verification in `tasks/plan.md`. Order is strict: 0 → A → B → C
 - [x] `test_selftest.py` — offline fakes (pass/fail branches) + `@pytest.mark.integration` live test that auto-skips if Ollama down
 - [x] `test_boundaries.py` — no SQL outside `sqlite_store.py`; no `chromadb` outside `chroma_store.py`; declared deps ⊆ approved set
 - [x] Verify: `pytest -q` green w/o Ollama (31 passed, 1 skipped); `selftest` prints clean FAIL when Ollama down; `ruff` clean
-- [ ] PENDING Ollama: `pytest -q -m integration` green and `python -m jarvis selftest` -> PASS (needs Ollama + `qwen3:14b` + `nomic-embed-text`)
+- [x] LIVE: `python -m jarvis selftest` -> PASS; `pytest -m integration` green; full suite 32 passed, 0 skipped
 
-### ▸ Checkpoint: Phase 0 build complete — all offline-verifiable DoD met. Live DoD (chat, recall, selftest PASS) pends Ollama. Next: `/test` → `/review` → `/code-simplify` → `/ship`
+### ▸ Checkpoint: Phase 0 DoD fully met (live: chat reply, selftest PASS, integration green, 32 passed). Next: `/review` → `/code-simplify` → `/ship` (record Mulch learnings at ship).
