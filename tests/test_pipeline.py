@@ -70,3 +70,17 @@ def test_ask_survives_a_connector_error():
     ans = knowledge.ask("q")  # must not crash
 
     assert ans.text == "answer:0"  # the failing source is treated as empty
+
+
+def test_ask_fetches_every_selected_connector():
+    hn = _FakeConnector("hn")
+    markets = _FakeConnector("markets")
+    knowledge = Knowledge(
+        _FakeRouter(["hn", "markets"]), {"hn": hn, "markets": markets}, _FakeAnswerer()
+    )
+
+    ans = knowledge.ask("q")
+
+    assert hn.calls == 1
+    assert markets.calls == 1
+    assert ans.text == "answer:2"  # both results reach the answerer

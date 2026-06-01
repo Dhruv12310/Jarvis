@@ -41,11 +41,11 @@ in `tasks/plan.md`. Deterministic-first: LLM routes + summarizes only; connector
 
 ### ▸ Checkpoint: all three connectors live — review before hardening
 
-## [ ] Slice 4 — Harden + DoD self-test + boundary guards  ·  `test(knowledge): Phase 1 DoD self-test + boundary guards`
-- [ ] routing robustness (multi-connector, none-match labeled chat, malformed -> [])
-- [ ] `selftest` — live HN route->fetch->summarize PASS; markets/news skip w/o keys
-- [ ] `test_boundaries.py` — httpx only in connectors/; SQL only in sqlite_store.py + cache/sqlite_cache.py; no connector imports another; deps ⊆ {python-dotenv, ollama, chromadb, httpx}
-- [ ] per-connector cache TTLs tuned
-- [ ] Verify: `pytest -q` offline green; `-m integration` HN green; `selftest` PASS; ruff clean
+## [x] Slice 4 — Harden + DoD self-test + boundary guards  ·  `test(knowledge): Phase 1 DoD self-test + boundary guards`
+- [x] routing robustness (multi-connector fan-out tested; none-match -> labeled chat; malformed -> [])
+- [x] `selftest` — live HN route->fetch->summarize prints PASS (knowledge round-trip); offline path unaffected
+- [x] `test_boundaries.py` — httpx only in connectors/; SQL only in sqlite_store.py + cache/sqlite_cache.py; connectors independent; deps ⊆ {python-dotenv, ollama, chromadb, httpx}
+- [x] per-connector cache TTLs (markets 60s, news/HN 300s)
+- [x] Verify: 92 offline green; live `selftest` PASS; ruff check + format clean
 
-### ▸ Checkpoint: Phase 1 DoD met → `/test` → `/review` → `/code-simplify` → `/ship`
+### ▸ Checkpoint: Phase 1 build complete (HN + markets verified live; news pending GNews account activation). Next: `/test` → `/review` → `/code-simplify` → `/ship`

@@ -1,7 +1,7 @@
-"""Phase 0 Definition-of-Done self-test.
+"""Jarvis Definition-of-Done self-test.
 
-Exercises the whole stack: one generation, a structured note round-trip, and an embed then
-similarity-read round-trip over seeded, clearly-distinct notes. Injecting fakes makes the
+Exercises the stack: a generation, a structured note round-trip, an embed then similarity-read, and
+(live only) the Phase 1 knowledge path on the keyless HN source. Injecting fakes makes the Phase 0
 orchestration verifiable offline; the defaults use a live Ollama. Prints PASS or a diagnostic FAIL.
 """
 
@@ -11,6 +11,12 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from jarvis.cache.sqlite_cache import SQLiteCache
+from jarvis.connectors.caching import CachingConnector
+from jarvis.connectors.hn import HackerNewsConnector
+from jarvis.knowledge.answerer import Answerer
+from jarvis.knowledge.pipeline import Knowledge
+from jarvis.knowledge.router import Router
 from jarvis.llm.client import LLMClient, OllamaClient
 from jarvis.llm.embedder import Embedder, OllamaEmbedder
 from jarvis.orchestrator import Orchestrator
@@ -34,7 +40,7 @@ class SelfTestResult:
 
     def __str__(self) -> str:
         header = "PASS" if self.passed else "FAIL"
-        return "\n".join([f"Phase 0 self-test: {header}", *self.checks])
+        return "\n".join([f"Jarvis self-test: {header}", *self.checks])
 
 
 def run_selftest(llm: LLMClient | None = None, embedder: Embedder | None = None) -> SelfTestResult:
@@ -44,7 +50,8 @@ def run_selftest(llm: LLMClient | None = None, embedder: Embedder | None = None)
     """
     checks: list[str] = []
     try:
-        orchestrator = Orchestrator(llm or OllamaClient())
+        active_llm = llm or OllamaClient()
+        orchestrator = Orchestrator(active_llm)
         reply = orchestrator.chat("Reply with a short greeting.")
         if not reply.strip():
             return SelfTestResult(False, [*checks, "[x] model returned an empty response"])
@@ -72,6 +79,16 @@ def run_selftest(llm: LLMClient | None = None, embedder: Embedder | None = None)
                     False, [*checks, f"[x] similarity miss: expected seed 0, got {got!r}"]
                 )
             checks.append(f"[ok] vector similarity-read (top: {hits[0].text!r})")
+
+            if llm is None:  # live mode only: prove the Phase 1 knowledge path (keyless HN source)
+                hn = CachingConnector(HackerNewsConnector(), SQLiteCache(tmp_path / "cache.db"), 60)
+                knowledge = Knowledge(Router(active_llm, [hn]), {"hn": hn}, Answerer(active_llm))
+                answer = knowledge.ask("what is new on hacker news about AI")
+                if answer is None or not answer.text.strip():
+                    return SelfTestResult(
+                        False, [*checks, "[x] knowledge HN path returned no grounded answer"]
+                    )
+                checks.append(f"[ok] knowledge HN round-trip ({len(answer.text.strip())} chars)")
     except Exception as exc:  # any backend failure becomes a clean diagnostic, not a crash
         return SelfTestResult(False, [*checks, f"[x] error: {type(exc).__name__}: {exc}"])
 

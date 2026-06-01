@@ -17,6 +17,7 @@ _SQL_ALLOWED = {"sqlite_store.py", "sqlite_cache.py"}
 
 _SQL = re.compile(r"\b(SELECT|INSERT|UPDATE|DELETE|CREATE TABLE|PRAGMA)\b", re.IGNORECASE)
 _CHROMA_IMPORT = re.compile(r"^\s*(import chromadb|from chromadb)", re.MULTILINE)
+_HTTPX_IMPORT = re.compile(r"^\s*(import httpx|from httpx)", re.MULTILINE)
 
 
 def _py_files_excluding(name: str) -> list[Path]:
@@ -50,3 +51,32 @@ def test_declared_runtime_deps_are_within_the_approved_set():
     unexpected = names - _APPROVED_RUNTIME_DEPS
 
     assert names <= _APPROVED_RUNTIME_DEPS, f"unexpected runtime deps: {unexpected}"
+
+
+def test_httpx_imported_only_under_connectors():
+    # Outbound HTTP is the trust boundary: only Collectors (connectors/) may cross it.
+    offenders = [
+        str(path.relative_to(_JARVIS))
+        for path in _JARVIS.rglob("*.py")
+        if path.parent.name != "connectors"
+        and _HTTPX_IMPORT.search(path.read_text(encoding="utf-8"))
+    ]
+
+    assert offenders == [], f"httpx imported outside connectors/: {offenders}"
+
+
+def test_connectors_do_not_import_each_other():
+    connectors_dir = _JARVIS / "connectors"
+    modules = {
+        p.stem for p in connectors_dir.glob("*.py") if p.stem not in {"__init__", "base", "caching"}
+    }
+    offenders = []
+    for path in connectors_dir.glob("*.py"):
+        if path.stem not in modules:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for other in modules - {path.stem}:
+            if re.search(rf"jarvis\.connectors\.{other}\b", text):
+                offenders.append(f"{path.name} -> {other}")
+
+    assert offenders == [], f"connectors must stay independent: {offenders}"
