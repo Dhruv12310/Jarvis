@@ -52,15 +52,14 @@ def _loop(
             continue
         if text.lower() in {"exit", "quit"}:
             return
-        if text.startswith(":"):
-            _handle_command(text, store, vector, embedder)
-            continue
+        # One guard covers both paths so a backend failure prints an error and the REPL survives.
         try:
-            reply = orchestrator.chat(text)
-        except Exception as exc:  # keep the REPL alive if the backend hiccups
+            if text.startswith(":"):
+                _handle_command(text, store, vector, embedder)
+            else:
+                print(f"jarvis> {orchestrator.chat(text).strip()}")
+        except Exception as exc:  # keep the REPL alive if a backend call fails
             print(f"[error] {exc}")
-            continue
-        print(f"jarvis> {reply.strip()}")
 
 
 def _handle_command(
@@ -76,8 +75,11 @@ def _handle_command(
         if not argument:
             print("usage: :note <text>")
             return
+        # Embed first, then save, then add: a backend failure leaves no half-written note,
+        # so the structured store and the vector store never diverge.
+        embedding = embedder.embed(argument)
         note = store.save_note(argument)
-        vector.add(id=str(note.id), text=argument, embedding=embedder.embed(argument))
+        vector.add(id=str(note.id), text=argument, embedding=embedding)
         print(f"saved note #{note.id}")
     elif command == "notes":
         notes = store.get_notes()
@@ -95,6 +97,6 @@ def _handle_command(
             print("(no matches)")
             return
         for hit in hits:
-            print(f"  #{hit.id}  ({hit.score:.3f})  {hit.text}")
+            print(f"  #{hit.id}  (d={hit.distance:.3f})  {hit.text}")
     else:
         print(f"unknown command: :{command}")

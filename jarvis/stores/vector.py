@@ -15,7 +15,7 @@ from dataclasses import dataclass
 class VectorHit:
     id: str
     text: str
-    score: float
+    distance: float  # backend distance, lower is closer (not a higher-is-better score)
     metadata: dict | None = None
 
 

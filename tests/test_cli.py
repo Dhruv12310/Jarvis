@@ -4,7 +4,10 @@ Uses a deterministic fake embedder and temp-backed stores, proving the full note
 (save -> embed -> recall) end to end without Ollama.
 """
 
-from jarvis.cli import _handle_command
+import pytest
+
+from jarvis.cli import _handle_command, _loop
+from jarvis.orchestrator import Orchestrator
 from jarvis.stores.chroma_store import ChromaVectorStore
 from jarvis.stores.sqlite_store import SQLiteStructuredStore
 
@@ -13,6 +16,16 @@ def _backends(tmp_path):
     store = SQLiteStructuredStore(tmp_path / "jarvis.db")
     vector = ChromaVectorStore(tmp_path / "chroma")
     return store, vector
+
+
+class _FailingEmbedder:
+    def embed(self, text: str) -> list[float]:
+        raise RuntimeError("embedder down")
+
+
+class _UnusedLLM:
+    def generate(self, prompt: str) -> str:
+        raise AssertionError("the chat path must not run for a command")
 
 
 def test_note_command_saves_embeds_and_reports_id(tmp_path, capsys, fake_embedder):
@@ -71,3 +84,26 @@ def test_unknown_command_is_reported(tmp_path, capsys, fake_embedder):
     _handle_command(":bogus", store, vector, fake_embedder)
 
     assert "unknown command" in capsys.readouterr().out
+
+
+def test_note_writes_nothing_when_embedding_fails(tmp_path):
+    # Embedding happens before the save, so a backend failure must leave no half-written note.
+    store, vector = _backends(tmp_path)
+
+    with pytest.raises(RuntimeError):
+        _handle_command(":note hello", store, vector, _FailingEmbedder())
+
+    assert store.get_notes() == []
+
+
+def test_loop_survives_a_backend_error_during_a_command(tmp_path, capsys, monkeypatch):
+    store, vector = _backends(tmp_path)
+    orchestrator = Orchestrator(_UnusedLLM())  # the command path must not touch the LLM
+    lines = iter([":note hello", "exit"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
+
+    _loop(orchestrator, store, vector, _FailingEmbedder())
+
+    out = capsys.readouterr().out
+    assert "[error]" in out  # the failure surfaced and the loop kept going to "exit"
+    assert store.get_notes() == []  # still no half-written note

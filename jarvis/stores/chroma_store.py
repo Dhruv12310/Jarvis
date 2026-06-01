@@ -48,7 +48,7 @@ class ChromaVectorStore(VectorStore):
         distances = result["distances"][0]
         metadatas = (result.get("metadatas") or [[]])[0] or [None] * len(ids)
         return [
-            VectorHit(id=hit_id, text=text, score=float(distance), metadata=metadata)
+            VectorHit(id=hit_id, text=text, distance=float(distance), metadata=metadata)
             for hit_id, text, distance, metadata in zip(
                 ids, documents, distances, metadatas, strict=False
             )
