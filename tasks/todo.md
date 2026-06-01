@@ -1,52 +1,46 @@
-# Phase 0 — TODO
+# Phase 1 — TODO
 
-Tracking list for `/build`. One slice per commit; check sub-items as they pass. Full detail +
-acceptance/verification in `tasks/plan.md`. Order is strict: 0 → A → B → C → D.
+Tracking list for `/build`. One vertical slice per commit; check sub-items as they pass. Full detail
+in `tasks/plan.md`. Deterministic-first: LLM routes + summarizes only; connectors fetch.
 
 ---
 
-## [x] Task 0 — Scaffold + initial commit  ·  done in `d1531ab`
-- [x] `jarvis/` importable; `jarvis/config.py` — one config object, `JARVIS_*` env-overridable, loads `.env`, makes `data/`
-- [x] `pyproject.toml` — pkg + `python-dotenv`, `[dev] = pytest, ruff`, ruff/pytest config + `integration` marker
-- [x] `.env.example` written; `.env` git-ignored
-- [x] Verify: `pip install -e ".[dev]"`; `config.llm_model == "qwen3:14b"`; `ruff check .` + `pytest -q` green (7 passing)
-- [x] Verify: initial commit made; `git status` clean (no clones/data)
+## [ ] Slice 1 — HN end-to-end (keyless)  ·  `feat(knowledge): HN connector with routing, grounded summary, and TTL cache`
+- [ ] (source-driven) verify Algolia HN Search API (endpoint, tags, hit fields)
+- [ ] `pyproject` += `httpx`; `config` += finnhub/gnews keys, watchlist, TTLs; create `.env` placeholders + `.env.example`
+- [ ] `llm/client.py` — `generate(prompt, *, format=None)` (backward compatible)
+- [ ] `cache/base.py` `Cache` ABC + `cache/sqlite_cache.py` `SQLiteCache` (only new raw SQL)
+- [ ] `connectors/base.py` `Connector` + `Source`/`Item`/`ConnectorResult`
+- [ ] `connectors/hn.py` `HackerNewsConnector` (injected `httpx.Client`, normalize -> Items)
+- [ ] `connectors/caching.py` `CachingConnector` (hit skips inner)
+- [ ] `knowledge/router.py` (format=json -> [names], filter unknown, []-on-none)
+- [ ] `knowledge/answerer.py` (grounded + cited; empty -> couldn't find)
+- [ ] `knowledge/pipeline.py` `Knowledge.ask` (None when no connector)
+- [ ] `cli.py` — free-text -> Knowledge; None -> labeled chat; keep :note/:notes/:recall; `(cached)` marker
+- [ ] Verify: offline units green (MockTransport, fake LLM); `-m integration` HN live; manual HN answer + `(cached)`; ruff clean
+- [ ] (sizing) optional split 1a plumbing / 1b HN+pipeline for smaller commits
 
-## [x] Task A — Brain path  ·  `feat(core): ollama-backed orchestrator and CLI chat loop`
-- [x] (source-driven) confirmed ollama 0.6.2: `generate(model, prompt)` -> `.response`; `embed` reserved for Slice C
-- [x] `llm/client.py` — `LLMClient` protocol + `OllamaClient.generate`
-- [x] `orchestrator.py` — `Orchestrator.chat(text)` -> `llm.generate(text)`, nothing else
-- [x] `cli.py` + `__main__.py` — `python -m jarvis` REPL; clean exit
-- [x] `pyproject.toml` += `ollama`
-- [x] Verify: `test_orchestrator.py` (FakeLLMClient) green (10 passing), no network; `ruff` clean; wiring smoke OK
-- [x] LIVE: `python -m jarvis` chat returns a real reply ("Hello, Dhruv!" from qwen3:14b)
+### ▸ Checkpoint: HN proven — grounded sourced live answer + cache hit; review before keyed connectors
 
-### ▸ Checkpoint: Brain proven — units green w/o Ollama, manual chat returns a reply, review before stores
+## [ ] Slice 2 — Markets (Finnhub)  ·  `feat(connectors): markets connector (Finnhub) with deterministic movers`
+- [ ] (source-driven) verify Finnhub `/quote` (token param; c/d/dp/h/l/o/pc) + rate limit
+- [ ] `connectors/markets.py` — watchlist quotes -> deterministic %-change movers -> Items; no-key -> empty + note
+- [ ] register in pipeline (CachingConnector, markets TTL)
+- [ ] Verify: unit (fixture %-change/rank + no-key); integration skips w/o key; manual "what moved today"; ruff clean
 
-## [x] Task B — StructuredStore + SQLite  ·  `feat(stores): StructuredStore interface and SQLite notes`
-- [x] `stores/structured.py` — `StructuredStore` ABC (`save_note`, `get_notes`) + frozen `Note`
-- [x] `stores/sqlite_store.py` — `notes` table on init, `PRAGMA journal_mode=WAL`; **only** raw SQL here
-- [x] `cli.py` — `:note <text>` save, `:notes` list (via interface, no SQL in CLI)
-- [x] Verify: `test_structured_store.py` (temp DB) round-trip + persistence green; `test_cli.py` dispatch green; `ruff` clean (20 passing). Fully offline, no Ollama needed.
+## [ ] Slice 3 — News (GNews)  ·  `feat(connectors): news connector (GNews)`
+- [ ] (source-driven) verify GNews `/search` (apikey param; title/description/url/source/publishedAt) + limit
+- [ ] `connectors/news.py` — query -> headlines -> Items; no-key -> empty + note
+- [ ] register in pipeline (CachingConnector, news TTL)
+- [ ] Verify: unit (fixture + no-key); integration skips w/o key; manual "latest in AI/LLMs"; ruff clean
 
-## [x] Task C — VectorStore + Chroma + embedder  ·  `feat(stores): VectorStore interface, Chroma backend, and local embedder`
-- [x] (source-driven) confirmed chroma 1.5.9 BYO: `PersistentClient` + `get_or_create_collection` (no EF) + explicit `embeddings=`/`query_embeddings=`; ollama `embed(model, input)` -> `.embeddings`
-- [x] `llm/embedder.py` — `Embedder` protocol + `OllamaEmbedder.embed`
-- [x] `stores/vector.py` — `VectorStore` ABC (`add(...metadata=None)`, `query`) + frozen `VectorHit`
-- [x] `stores/chroma_store.py` — persistent client, collection w/ **no** `embedding_function`, explicit `embeddings=`, telemetry off; **only** `chromadb` import here
-- [x] `cli.py` — `:note` also embeds; `:recall <query>` returns top hit(s)
-- [x] `pyproject.toml` += `chromadb`
-- [x] Verify: `test_vector_store.py` (temp dir + deterministic fake embedder) top-hit green; `test_cli.py` full save/embed/recall green; `ruff` clean (26 passing). Offline.
-- [x] LIVE: real `nomic-embed-text` similarity-read returns the right note (verified via selftest)
+### ▸ Checkpoint: all three connectors live — review before hardening
 
-### ▸ Checkpoint: Both stores proven — units green w/o Ollama, note saved→listed→recalled, review before glue
+## [ ] Slice 4 — Harden + DoD self-test + boundary guards  ·  `test(knowledge): Phase 1 DoD self-test + boundary guards`
+- [ ] routing robustness (multi-connector, none-match labeled chat, malformed -> [])
+- [ ] `selftest` — live HN route->fetch->summarize PASS; markets/news skip w/o keys
+- [ ] `test_boundaries.py` — httpx only in connectors/; SQL only in sqlite_store.py + cache/sqlite_cache.py; no connector imports another; deps ⊆ {python-dotenv, ollama, chromadb, httpx}
+- [ ] per-connector cache TTLs tuned
+- [ ] Verify: `pytest -q` offline green; `-m integration` HN green; `selftest` PASS; ruff clean
 
-## [x] Task D — DoD self-test + integration + boundary guards  ·  `test(core): Phase 0 DoD self-test and boundary guards`
-- [x] `selftest.py` + `python -m jarvis selftest` — `generate` (non-empty) + both round-trips on seeded distinct notes; clean `PASS`/`FAIL` (backend errors caught)
-- [x] `__main__.py` — subcommand dispatch (`selftest`)
-- [x] `test_selftest.py` — offline fakes (pass/fail branches) + `@pytest.mark.integration` live test that auto-skips if Ollama down
-- [x] `test_boundaries.py` — no SQL outside `sqlite_store.py`; no `chromadb` outside `chroma_store.py`; declared deps ⊆ approved set
-- [x] Verify: `pytest -q` green w/o Ollama (31 passed, 1 skipped); `selftest` prints clean FAIL when Ollama down; `ruff` clean
-- [x] LIVE: `python -m jarvis selftest` -> PASS; `pytest -m integration` green; full suite 32 passed, 0 skipped
-
-### ▸ Checkpoint: Phase 0 SHIPPED (GO). 46 passed + live integration green; ruff check + format clean. review/simplify/ship done; pre-ship coverage gaps closed (entry dispatch, ollama wrappers, cli branches). Deferred decisions in docs/DECISIONS.md (Mulch CLI not installed). Next: re-author commits to GitHub noreply identity, push to Dhruv12310/Jarvis, then Phase 1 (Knowledge).
+### ▸ Checkpoint: Phase 1 DoD met → `/test` → `/review` → `/code-simplify` → `/ship`
