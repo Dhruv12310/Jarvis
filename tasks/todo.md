@@ -32,11 +32,12 @@ in `tasks/plan.md`. Deterministic-first: LLM routes + summarizes only; connector
 - [x] registered in pipeline (CachingConnector, markets TTL)
 - [x] Verify: offline units (MockTransport rank + no-key + watchlist); live router->markets + grounded movers; ruff clean
 
-## [ ] Slice 3 — News (GNews)  ·  `feat(connectors): news connector (GNews)`
-- [ ] (source-driven) verify GNews `/search` (apikey param; title/description/url/source/publishedAt) + limit
-- [ ] `connectors/news.py` — query -> headlines -> Items; no-key -> empty + note
-- [ ] register in pipeline (CachingConnector, news TTL)
-- [ ] Verify: unit (fixture + no-key); integration skips w/o key; manual "latest in AI/LLMs"; ruff clean
+## [x] Slice 3 — News (GNews)  ·  `feat(connectors): news connector (GNews)`
+- [x] (source-driven) verified GNews `/search` from docs (apikey param; title/description/url/publishedAt/source.name)
+- [x] `connectors/news.py` — query -> headlines -> Items; no-key / non-200 -> empty (never invents)
+- [x] registered in pipeline (CachingConnector, news TTL)
+- [x] Verify: offline units (fixture + no-key + 403); live router->news + graceful 403; ruff clean
+  - [ ] PENDING GNews activation: live news answers (key valid; account needs email verification at gnews.io)
 
 ### ▸ Checkpoint: all three connectors live — review before hardening
 

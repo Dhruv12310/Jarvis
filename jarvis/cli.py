@@ -12,6 +12,7 @@ from jarvis.config import config
 from jarvis.connectors.caching import CachingConnector
 from jarvis.connectors.hn import HackerNewsConnector
 from jarvis.connectors.markets import MarketsConnector
+from jarvis.connectors.news import NewsConnector
 from jarvis.knowledge.answerer import Answerer
 from jarvis.knowledge.pipeline import Knowledge
 from jarvis.knowledge.router import Router
@@ -35,7 +36,7 @@ def _build_knowledge(llm: LLMClient) -> Knowledge:
     connectors = [
         CachingConnector(HackerNewsConnector(), cache, config.cache_ttl_hn),
         CachingConnector(MarketsConnector(), cache, config.cache_ttl_markets),
-        # the news connector is added in slice 3, against the same interface
+        CachingConnector(NewsConnector(), cache, config.cache_ttl_news),
     ]
     router = Router(llm, connectors)
     answerer = Answerer(llm)
