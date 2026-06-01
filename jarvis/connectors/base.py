@@ -43,7 +43,7 @@ class Connector(ABC):
 
 
 def serialize_result(result: ConnectorResult) -> str:
-    """JSON for the cache. Deterministic; connectors never put secrets in results."""
+    """JSON for the cache. Item.extra must be JSON-serializable; never put secrets in results."""
     return json.dumps(asdict(result))
 
 

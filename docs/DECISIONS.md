@@ -58,3 +58,25 @@ majors (e.g. `chromadb>=1.5,<2`) so a 2.x change cannot silently land.
   `Client.embed(model, input).embeddings`; chromadb 1.5.9 bring-your-own-embeddings via
   PersistentClient + get_or_create_collection (no embedding_function) + explicit embeddings= /
   query_embeddings=.
+
+## Phase 1 review notes (deferred to Phase 2)
+
+### D7 - Markets connector makes N sequential Finnhub calls (revisit: scale/latency)
+`MarketsConnector.fetch` calls /quote once per watchlist symbol (~7), sequentially, on a cache miss
+(~1-2s first-query latency). Fine for Phase 1 (reactive + cached). Parallelize (threads or async
+httpx) or move to a batch quote source when latency or watchlist size grows.
+
+### D8 - Cache key is connector:query only (revisit: when params become user-tunable)
+The cache key does not include connector parameters (e.g. the market watchlist), so a mid-session
+`JARVIS_MARKET_WATCHLIST` change serves stale results until the TTL expires. Fold relevant params
+into the key when they become runtime-tunable.
+
+### D9 - Grounding is prompt-enforced; empty conflates error with no-data (revisit: Phase 2 surfacing)
+The answerer instructs the LLM to use only the provided data and to say "could not find" when empty,
+but cannot guarantee no leakage (standard RAG). Empty results also conflate "no key / fetch error"
+with "genuinely no data". When Phase 2 surfaces suggestions/briefings, distinguish fetch-failure from
+empty and consider a verification pass.
+
+### D10 - CachingConnector.last_was_cache_hit is instance state (revisit: Phase 2 Heartbeat)
+The cache-hit flag is single-threaded instance state. Revisit for the multi-process always-on
+Heartbeat (a per-call return value or thread-local) so the `(cached)` signal stays correct.

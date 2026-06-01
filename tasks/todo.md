@@ -37,7 +37,7 @@ in `tasks/plan.md`. Deterministic-first: LLM routes + summarizes only; connector
 - [x] `connectors/news.py` — query -> headlines -> Items; no-key / non-200 -> empty (never invents)
 - [x] registered in pipeline (CachingConnector, news TTL)
 - [x] Verify: offline units (fixture + no-key + 403); live router->news + graceful 403; ruff clean
-  - [ ] PENDING GNews activation: live news answers (key valid; account needs email verification at gnews.io)
+  - [x] LIVE: GNews activated; news answers grounded + cited (all three connectors verified live)
 
 ### ▸ Checkpoint: all three connectors live — review before hardening
 
@@ -48,4 +48,4 @@ in `tasks/plan.md`. Deterministic-first: LLM routes + summarizes only; connector
 - [x] per-connector cache TTLs (markets 60s, news/HN 300s)
 - [x] Verify: 92 offline green; live `selftest` PASS; ruff check + format clean
 
-### ▸ Checkpoint: Phase 1 build complete (HN + markets verified live; news pending GNews account activation). Next: `/test` → `/review` → `/code-simplify` → `/ship`
+### ▸ Checkpoint: Phase 1 DoD met (HN + markets + news all verified live; 93 tests + selftest PASS). Next: `/review` → `/code-simplify` → `/ship`
