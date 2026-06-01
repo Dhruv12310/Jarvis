@@ -1,12 +1,11 @@
-"""CLI command dispatch (no network): :note saves and embeds, :notes lists, :recall finds.
-
-Uses a deterministic fake embedder and temp-backed stores, proving the full note path
-(save -> embed -> recall) end to end without Ollama.
+"""CLI dispatch (no network): :note/:notes/:recall commands, the knowledge/chat answer path,
+and the REPL's resilience. Uses fakes/temp stores so nothing hits Ollama or the network.
 """
 
 import pytest
 
-from jarvis.cli import _handle_command, _loop
+from jarvis.cli import _answer, _handle_command, _loop
+from jarvis.knowledge.pipeline import Answer
 from jarvis.orchestrator import Orchestrator
 from jarvis.stores.chroma_store import ChromaVectorStore
 from jarvis.stores.sqlite_store import SQLiteStructuredStore
@@ -23,9 +22,22 @@ class _FailingEmbedder:
         raise RuntimeError("embedder down")
 
 
-class _UnusedLLM:
+class _EchoLLM:
     def generate(self, prompt: str) -> str:
-        raise AssertionError("the chat path must not run for a command")
+        return f"echo: {prompt}"
+
+
+class _FakeKnowledge:
+    """Stands in for the knowledge pipeline: ``ask`` returns a preset Answer or None."""
+
+    def __init__(self, result=None):
+        self._result = result
+
+    def ask(self, question):
+        return self._result
+
+
+# --- command dispatch -------------------------------------------------------
 
 
 def test_note_command_saves_embeds_and_reports_id(tmp_path, capsys, fake_embedder):
@@ -41,7 +53,7 @@ def test_recall_finds_the_matching_note(tmp_path, capsys, fake_embedder):
     store, vector = _backends(tmp_path)
     _handle_command(":note schedule dentist appointment", store, vector, fake_embedder)
     _handle_command(":note buy groceries and milk", store, vector, fake_embedder)
-    capsys.readouterr()  # discard the save output
+    capsys.readouterr()
 
     _handle_command(":recall schedule dentist appointment", store, vector, fake_embedder)
 
@@ -86,34 +98,6 @@ def test_unknown_command_is_reported(tmp_path, capsys, fake_embedder):
     assert "unknown command" in capsys.readouterr().out
 
 
-def test_note_writes_nothing_when_embedding_fails(tmp_path):
-    # Embedding happens before the save, so a backend failure must leave no half-written note.
-    store, vector = _backends(tmp_path)
-
-    with pytest.raises(RuntimeError):
-        _handle_command(":note hello", store, vector, _FailingEmbedder())
-
-    assert store.get_notes() == []
-
-
-def test_loop_survives_a_backend_error_during_a_command(tmp_path, capsys, monkeypatch):
-    store, vector = _backends(tmp_path)
-    orchestrator = Orchestrator(_UnusedLLM())  # the command path must not touch the LLM
-    lines = iter([":note hello", "exit"])
-    monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
-
-    _loop(orchestrator, store, vector, _FailingEmbedder())
-
-    out = capsys.readouterr().out
-    assert "[error]" in out  # the failure surfaced and the loop kept going to "exit"
-    assert store.get_notes() == []  # still no half-written note
-
-
-class _EchoLLM:
-    def generate(self, prompt: str) -> str:
-        return f"echo: {prompt}"
-
-
 def test_recall_with_no_matches_reports_empty(tmp_path, capsys, fake_embedder):
     store, vector = _backends(tmp_path)
 
@@ -130,12 +114,75 @@ def test_notes_on_empty_store_reports_empty(tmp_path, capsys, fake_embedder):
     assert "(no notes yet)" in capsys.readouterr().out
 
 
-def test_loop_chat_turn_prints_model_reply(tmp_path, capsys, fake_embedder, monkeypatch):
+def test_note_writes_nothing_when_embedding_fails(tmp_path):
+    store, vector = _backends(tmp_path)
+
+    with pytest.raises(RuntimeError):
+        _handle_command(":note hello", store, vector, _FailingEmbedder())
+
+    assert store.get_notes() == []
+
+
+# --- answer path (knowledge -> grounded, else labeled chat) -----------------
+
+
+def test_answer_prints_grounded_result(capsys):
+    knowledge = _FakeKnowledge(Answer(text="grounded summary", cached=False))
+
+    _answer("q", knowledge, orchestrator=None)
+
+    out = capsys.readouterr().out
+    assert "jarvis>" in out
+    assert "grounded summary" in out
+
+
+def test_answer_shows_cached_marker(capsys):
+    knowledge = _FakeKnowledge(Answer(text="x", cached=True))
+
+    _answer("q", knowledge, orchestrator=None)
+
+    assert "(cached)" in capsys.readouterr().out
+
+
+def test_answer_falls_back_to_labeled_chat_when_no_connector(capsys):
+    class _Chat:
+        def chat(self, text):
+            return "chat reply"
+
+    _answer("q", _FakeKnowledge(None), _Chat())
+
+    out = capsys.readouterr().out
+    assert "(chat)" in out
+    assert "chat reply" in out
+
+
+# --- REPL resilience --------------------------------------------------------
+
+
+def test_loop_survives_a_backend_error_during_a_command(tmp_path, capsys, monkeypatch):
+    store, vector = _backends(tmp_path)
+    lines = iter([":note hello", "exit"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
+
+    _loop(
+        orchestrator=None,
+        knowledge=_FakeKnowledge(),
+        store=store,
+        vector=vector,
+        embedder=_FailingEmbedder(),
+    )
+
+    out = capsys.readouterr().out
+    assert "[error]" in out  # the failure surfaced and the loop kept going to "exit"
+    assert store.get_notes() == []  # still no half-written note
+
+
+def test_loop_chat_turn_falls_back_and_prints_reply(tmp_path, capsys, fake_embedder, monkeypatch):
     store, vector = _backends(tmp_path)
     orchestrator = Orchestrator(_EchoLLM())
     lines = iter(["hello there", "exit"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
 
-    _loop(orchestrator, store, vector, fake_embedder)
+    _loop(orchestrator, _FakeKnowledge(None), store, vector, fake_embedder)
 
-    assert "jarvis> echo: hello there" in capsys.readouterr().out
+    assert "jarvis (chat)> echo: hello there" in capsys.readouterr().out

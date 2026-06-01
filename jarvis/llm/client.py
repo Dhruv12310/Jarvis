@@ -17,11 +17,15 @@ from jarvis.config import config
 class LLMClient(Protocol):
     """Anything that turns a prompt into a text completion.
 
-    ``format`` is optional and backward compatible: ``None`` is free text; ``"json"`` constrains the
-    model to valid JSON (used by the Phase 1 router). Phase 0 callers pass nothing.
+    ``format`` is optional and backward compatible: ``None`` is free text; a JSON-schema ``dict``
+    constrains the model to that exact structure (used by the Phase 1 router, since plain ``"json"``
+    lets a thinking model collapse to ``{}``). ``think`` toggles a reasoning model's thinking
+    (``False`` for the mechanical router; default for prose). Phase 0 callers pass nothing.
     """
 
-    def generate(self, prompt: str, *, format: str | None = None) -> str: ...
+    def generate(
+        self, prompt: str, *, format: str | dict | None = None, think: bool | None = None
+    ) -> str: ...
 
 
 class OllamaClient:
@@ -31,6 +35,10 @@ class OllamaClient:
         self._model = model or config.llm_model
         self._client = Client(host=host or config.ollama_host)
 
-    def generate(self, prompt: str, *, format: str | None = None) -> str:
-        response = self._client.generate(model=self._model, prompt=prompt, format=format)
+    def generate(
+        self, prompt: str, *, format: str | dict | None = None, think: bool | None = None
+    ) -> str:
+        response = self._client.generate(
+            model=self._model, prompt=prompt, format=format, think=think
+        )
         return response.response

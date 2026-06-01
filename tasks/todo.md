@@ -14,14 +14,15 @@ in `tasks/plan.md`. Deterministic-first: LLM routes + summarizes only; connector
 - [x] boundary tests updated: SQL allowed in `sqlite_cache.py`; approved deps += httpx
 - [x] Verify: offline suite 60 passed; ruff check + format clean
 
-## [ ] Slice 1b — HN behavior  ·  `feat(knowledge): HN connector with routing, grounded summary, and TTL cache`
-- [ ] (source-driven) verify Algolia HN Search API (endpoint, tags, hit fields)
-- [ ] `connectors/hn.py` `HackerNewsConnector` (injected `httpx.Client`, normalize -> Items)
-- [ ] `knowledge/router.py` (format=json -> [names], filter unknown, []-on-none)
-- [ ] `knowledge/answerer.py` (grounded + cited; empty -> couldn't find)
-- [ ] `knowledge/pipeline.py` `Knowledge.ask` (None when no connector)
-- [ ] `cli.py` — free-text -> Knowledge; None -> labeled chat; keep :note/:notes/:recall; `(cached)` marker
-- [ ] Verify: offline units (MockTransport, fake LLM); `-m integration` HN live; manual HN answer + `(cached)`; ruff clean
+## [x] Slice 1b — HN behavior  ·  `feat(knowledge): HN connector with routing, grounded summary, and TTL cache`
+- [x] (source-driven) verified Algolia HN Search API live (endpoint, tags=story, hit fields)
+- [x] `connectors/hn.py` `HackerNewsConnector` (injected `httpx.Client`, normalize -> Items)
+- [x] `knowledge/router.py` (JSON **schema** + think=False; plain format="json" made qwen3 collapse to {})
+- [x] `knowledge/answerer.py` (grounded + cited; empty -> "could not find", never memory)
+- [x] `knowledge/pipeline.py` `Knowledge.ask` (None when no connector; failing source contained; cached flag)
+- [x] `cli.py` — free-text -> Knowledge; None -> labeled chat; keep :note/:notes/:recall; `(cached)` marker
+- [x] Verify: 81 offline green; live router + grounded cited HN answer + cache-hit (pipeline-proven); integration selftest green; ruff clean
+  - note: piped-CLI `(cached)` demo is skewed by a Windows PowerShell stdin-BOM artifact; real interactive use caches correctly
 
 ### ▸ Checkpoint: HN proven — grounded sourced live answer + cache hit; review before keyed connectors
 

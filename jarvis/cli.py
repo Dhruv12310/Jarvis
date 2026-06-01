@@ -1,13 +1,20 @@
-"""Plain CLI chat loop for Jarvis Phase 0.
+"""Plain CLI for Jarvis.
 
-Wires the Ollama-backed orchestrator and both stores to stdin/stdout. Plain text is a chat turn;
-a line starting with ``:`` is a command (``:note``, ``:notes``, ``:recall``).
+Free-text questions go through the knowledge pipeline (route -> deterministic fetch -> grounded,
+cited summary). When no connector applies it falls back to labeled plain chat. Lines starting with
+``:`` are Phase 0 store commands (:note, :notes, :recall).
 """
 
 from __future__ import annotations
 
+from jarvis.cache.sqlite_cache import SQLiteCache
 from jarvis.config import config
-from jarvis.llm.client import OllamaClient
+from jarvis.connectors.caching import CachingConnector
+from jarvis.connectors.hn import HackerNewsConnector
+from jarvis.knowledge.answerer import Answerer
+from jarvis.knowledge.pipeline import Knowledge
+from jarvis.knowledge.router import Router
+from jarvis.llm.client import LLMClient, OllamaClient
 from jarvis.llm.embedder import Embedder, OllamaEmbedder
 from jarvis.orchestrator import Orchestrator
 from jarvis.stores.chroma_store import ChromaVectorStore
@@ -16,21 +23,34 @@ from jarvis.stores.structured import StructuredStore
 from jarvis.stores.vector import VectorStore
 
 BANNER = (
-    "Jarvis (Phase 0). Type a message to chat.\n"
-    "Commands:  :note <text>  save and embed a note   |   :notes  list notes\n"
-    "           :recall <query>  find similar notes    |   exit"
+    "Jarvis (Phase 1). Ask about markets, AI/business news, or HN/YC and answers come from live\n"
+    "sources with citations. General questions fall back to plain chat.\n"
+    "Commands:  :note <text>  |  :notes  |  :recall <query>  |  exit"
 )
+
+
+def _build_knowledge(llm: LLMClient) -> Knowledge:
+    cache = SQLiteCache(config.db_path.parent / "cache.db")
+    connectors = [
+        CachingConnector(HackerNewsConnector(), cache, config.cache_ttl_hn),
+        # markets + news connectors are added in later slices, against the same interface
+    ]
+    router = Router(llm, connectors)
+    answerer = Answerer(llm)
+    return Knowledge(router, {c.name: c for c in connectors}, answerer)
 
 
 def run() -> None:
     config.ensure_dirs()
-    orchestrator = Orchestrator(OllamaClient())
+    llm = OllamaClient()
+    orchestrator = Orchestrator(llm)
+    knowledge = _build_knowledge(llm)
     store = SQLiteStructuredStore(config.db_path)
     vector = ChromaVectorStore(config.vector_dir)
     embedder = OllamaEmbedder()
     print(BANNER)
     try:
-        _loop(orchestrator, store, vector, embedder)
+        _loop(orchestrator, knowledge, store, vector, embedder)
     finally:
         store.close()
     print("bye.")
@@ -38,6 +58,7 @@ def run() -> None:
 
 def _loop(
     orchestrator: Orchestrator,
+    knowledge: Knowledge,
     store: StructuredStore,
     vector: VectorStore,
     embedder: Embedder,
@@ -52,14 +73,24 @@ def _loop(
             continue
         if text.lower() in {"exit", "quit"}:
             return
-        # One guard covers both paths so a backend failure prints an error and the REPL survives.
+        # One guard covers all paths so a backend failure prints an error and the REPL survives.
         try:
             if text.startswith(":"):
                 _handle_command(text, store, vector, embedder)
             else:
-                print(f"jarvis> {orchestrator.chat(text).strip()}")
+                _answer(text, knowledge, orchestrator)
         except Exception as exc:  # keep the REPL alive if a backend call fails
             print(f"[error] {exc}")
+
+
+def _answer(text: str, knowledge: Knowledge, orchestrator: Orchestrator) -> None:
+    result = knowledge.ask(text)
+    if result is None:
+        # No connector applied -> labeled plain chat (clearly the model's own knowledge).
+        print(f"jarvis (chat)> {orchestrator.chat(text).strip()}")
+        return
+    marker = " (cached)" if result.cached else ""
+    print(f"jarvis{marker}> {result.text}")
 
 
 def _handle_command(

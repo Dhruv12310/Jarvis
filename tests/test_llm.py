@@ -17,11 +17,13 @@ class _FakeOllama:
         self.host = host
         self.generate_args = None
         self.format_arg = None
+        self.think_arg = None
         self.embed_args = None
 
-    def generate(self, model, prompt, format=None):
+    def generate(self, model, prompt, format=None, think=None):
         self.generate_args = (model, prompt)
         self.format_arg = format
+        self.think_arg = think
         return SimpleNamespace(response="stub reply")
 
     def embed(self, model, input):
@@ -77,3 +79,15 @@ def test_ollama_client_forwards_format(monkeypatch):
     OllamaClient().generate("give me json", format="json")
 
     assert created["client"].format_arg == "json"
+
+
+def test_ollama_client_forwards_think(monkeypatch):
+    created = {}
+    monkeypatch.setattr(
+        "jarvis.llm.client.Client",
+        lambda host=None: created.setdefault("client", _FakeOllama(host)),
+    )
+
+    OllamaClient().generate("q", think=False)
+
+    assert created["client"].think_arg is False
