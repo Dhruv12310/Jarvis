@@ -41,11 +41,12 @@ acceptance/verification in `tasks/plan.md`. Order is strict: 0 → A → B → C
 
 ### ▸ Checkpoint: Both stores proven — units green w/o Ollama, note saved→listed→recalled, review before glue
 
-## [ ] Task D — DoD self-test + integration + boundary guards  · `test(core): Phase 0 DoD self-test + boundary guards`
-- [ ] `selftest.py` + `python -m jarvis selftest` — live `generate` (non-empty) + both round-trips on seeded distinct notes; `PASS`/`FAIL`
-- [ ] `__main__.py` — subcommand dispatch (`selftest`)
-- [ ] `test_selftest.py` — `@pytest.mark.integration`, auto-skips if Ollama down
-- [ ] `test_boundaries.py` — no SQL outside `sqlite_store.py`; no `chromadb` outside `chroma_store.py`; declared deps ⊆ approved set
-- [ ] Verify: `pytest -q` green w/o Ollama; `pytest -q -m integration` green w/ Ollama; `selftest` PASS; `ruff` clean
+## [x] Task D — DoD self-test + integration + boundary guards  ·  `test(core): Phase 0 DoD self-test and boundary guards`
+- [x] `selftest.py` + `python -m jarvis selftest` — `generate` (non-empty) + both round-trips on seeded distinct notes; clean `PASS`/`FAIL` (backend errors caught)
+- [x] `__main__.py` — subcommand dispatch (`selftest`)
+- [x] `test_selftest.py` — offline fakes (pass/fail branches) + `@pytest.mark.integration` live test that auto-skips if Ollama down
+- [x] `test_boundaries.py` — no SQL outside `sqlite_store.py`; no `chromadb` outside `chroma_store.py`; declared deps ⊆ approved set
+- [x] Verify: `pytest -q` green w/o Ollama (31 passed, 1 skipped); `selftest` prints clean FAIL when Ollama down; `ruff` clean
+- [ ] PENDING Ollama: `pytest -q -m integration` green and `python -m jarvis selftest` -> PASS (needs Ollama + `qwen3:14b` + `nomic-embed-text`)
 
-### ▸ Checkpoint: Phase 0 complete — all SPEC.md DoD met → `/test` → `/review` → `/code-simplify` → `/ship`
+### ▸ Checkpoint: Phase 0 build complete — all offline-verifiable DoD met. Live DoD (chat, recall, selftest PASS) pends Ollama. Next: `/test` → `/review` → `/code-simplify` → `/ship`
