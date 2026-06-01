@@ -25,9 +25,7 @@ class Config:
     """Resolved Jarvis settings. Field factories re-read the environment on each construction,
     so tests can override via env vars and a fresh ``Config()`` reflects them."""
 
-    llm_model: str = field(
-        default_factory=lambda: os.environ.get("JARVIS_LLM_MODEL", "qwen3:14b")
-    )
+    llm_model: str = field(default_factory=lambda: os.environ.get("JARVIS_LLM_MODEL", "qwen3:14b"))
     embed_model: str = field(
         default_factory=lambda: os.environ.get("JARVIS_EMBED_MODEL", "nomic-embed-text")
     )
@@ -35,14 +33,10 @@ class Config:
         default_factory=lambda: os.environ.get("JARVIS_OLLAMA_HOST", "http://localhost:11434")
     )
     db_path: Path = field(
-        default_factory=lambda: Path(
-            os.environ.get("JARVIS_DB_PATH", str(_DATA / "jarvis.db"))
-        )
+        default_factory=lambda: Path(os.environ.get("JARVIS_DB_PATH", str(_DATA / "jarvis.db")))
     )
     vector_dir: Path = field(
-        default_factory=lambda: Path(
-            os.environ.get("JARVIS_VECTOR_DIR", str(_DATA / "chroma"))
-        )
+        default_factory=lambda: Path(os.environ.get("JARVIS_VECTOR_DIR", str(_DATA / "chroma")))
     )
 
     def ensure_dirs(self) -> None:
