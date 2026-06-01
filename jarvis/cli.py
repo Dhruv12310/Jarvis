@@ -11,6 +11,7 @@ from jarvis.cache.sqlite_cache import SQLiteCache
 from jarvis.config import config
 from jarvis.connectors.caching import CachingConnector
 from jarvis.connectors.hn import HackerNewsConnector
+from jarvis.connectors.markets import MarketsConnector
 from jarvis.knowledge.answerer import Answerer
 from jarvis.knowledge.pipeline import Knowledge
 from jarvis.knowledge.router import Router
@@ -33,7 +34,8 @@ def _build_knowledge(llm: LLMClient) -> Knowledge:
     cache = SQLiteCache(config.db_path.parent / "cache.db")
     connectors = [
         CachingConnector(HackerNewsConnector(), cache, config.cache_ttl_hn),
-        # markets + news connectors are added in later slices, against the same interface
+        CachingConnector(MarketsConnector(), cache, config.cache_ttl_markets),
+        # the news connector is added in slice 3, against the same interface
     ]
     router = Router(llm, connectors)
     answerer = Answerer(llm)

@@ -57,7 +57,9 @@ def test_ensure_dirs_is_idempotent(tmp_path, monkeypatch):
     assert (tmp_path / "v").is_dir()
 
 
-def test_api_keys_default_empty():
+def test_api_keys_default_empty(monkeypatch):
+    monkeypatch.delenv("JARVIS_FINNHUB_API_KEY", raising=False)
+    monkeypatch.delenv("JARVIS_GNEWS_API_KEY", raising=False)
     cfg = Config()
     assert cfg.finnhub_api_key == ""
     assert cfg.gnews_api_key == ""

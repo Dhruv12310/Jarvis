@@ -26,11 +26,11 @@ in `tasks/plan.md`. Deterministic-first: LLM routes + summarizes only; connector
 
 ### ▸ Checkpoint: HN proven — grounded sourced live answer + cache hit; review before keyed connectors
 
-## [ ] Slice 2 — Markets (Finnhub)  ·  `feat(connectors): markets connector (Finnhub) with deterministic movers`
-- [ ] (source-driven) verify Finnhub `/quote` (token param; c/d/dp/h/l/o/pc) + rate limit
-- [ ] `connectors/markets.py` — watchlist quotes -> deterministic %-change movers -> Items; no-key -> empty + note
-- [ ] register in pipeline (CachingConnector, markets TTL)
-- [ ] Verify: unit (fixture %-change/rank + no-key); integration skips w/o key; manual "what moved today"; ruff clean
+## [x] Slice 2 — Markets (Finnhub)  ·  `feat(connectors): markets connector (Finnhub) with deterministic movers`
+- [x] (source-driven) verified Finnhub `/quote` live (token param; c/d/dp/h/l/o/pc; c==0 = unknown symbol)
+- [x] `connectors/markets.py` — watchlist (+ named tickers) quotes -> movers ranked by |dp|; no-key -> empty
+- [x] registered in pipeline (CachingConnector, markets TTL)
+- [x] Verify: offline units (MockTransport rank + no-key + watchlist); live router->markets + grounded movers; ruff clean
 
 ## [ ] Slice 3 — News (GNews)  ·  `feat(connectors): news connector (GNews)`
 - [ ] (source-driven) verify GNews `/search` (apikey param; title/description/url/source/publishedAt) + limit
