@@ -5,20 +5,21 @@ acceptance/verification in `tasks/plan.md`. Order is strict: 0 → A → B → C
 
 ---
 
-## [ ] Task 0 — Scaffold + initial commit  · `chore: initial commit — spec, constitution, scaffold`
-- [ ] `jarvis/` importable; `jarvis/config.py` — one config object, `JARVIS_*` env-overridable, loads `.env`, makes `data/`
-- [ ] `pyproject.toml` — pkg + `python-dotenv`, `[dev] = pytest, ruff`, ruff/pytest config + `integration` marker
-- [ ] `.env.example` written; `.env` git-ignored
-- [ ] Verify: `pip install -e ".[dev]"`; `config.llm_model == "qwen3:14b"`; `ruff check .` + `pytest -q` green
-- [ ] Verify: initial commit made; `git status` clean (no clones/data)
+## [x] Task 0 — Scaffold + initial commit  ·  done in `d1531ab`
+- [x] `jarvis/` importable; `jarvis/config.py` — one config object, `JARVIS_*` env-overridable, loads `.env`, makes `data/`
+- [x] `pyproject.toml` — pkg + `python-dotenv`, `[dev] = pytest, ruff`, ruff/pytest config + `integration` marker
+- [x] `.env.example` written; `.env` git-ignored
+- [x] Verify: `pip install -e ".[dev]"`; `config.llm_model == "qwen3:14b"`; `ruff check .` + `pytest -q` green (7 passing)
+- [x] Verify: initial commit made; `git status` clean (no clones/data)
 
-## [ ] Task A — Brain path  · `feat(core): ollama-backed orchestrator + CLI chat loop`
-- [ ] (source-driven) confirm current `ollama` generation method name
-- [ ] `llm/client.py` — `LLMClient` protocol + `OllamaClient.generate`
-- [ ] `orchestrator.py` — `Orchestrator.chat(text)` → `llm.generate(text)`, nothing else
-- [ ] `cli.py` + `__main__.py` — `python -m jarvis` REPL; non-empty reply; clean exit
-- [ ] `pyproject.toml` += `ollama`
-- [ ] Verify: `test_orchestrator.py` (FakeLLMClient) green, no network; manual chat works; `ruff` clean
+## [x] Task A — Brain path  ·  `feat(core): ollama-backed orchestrator and CLI chat loop`
+- [x] (source-driven) confirmed ollama 0.6.2: `generate(model, prompt)` -> `.response`; `embed` reserved for Slice C
+- [x] `llm/client.py` — `LLMClient` protocol + `OllamaClient.generate`
+- [x] `orchestrator.py` — `Orchestrator.chat(text)` -> `llm.generate(text)`, nothing else
+- [x] `cli.py` + `__main__.py` — `python -m jarvis` REPL; clean exit
+- [x] `pyproject.toml` += `ollama`
+- [x] Verify: `test_orchestrator.py` (FakeLLMClient) green (10 passing), no network; `ruff` clean; wiring smoke OK
+- [ ] PENDING Ollama: live `python -m jarvis` returns a non-empty reply (needs Ollama running + `qwen3:14b` pulled)
 
 ### ▸ Checkpoint: Brain proven — units green w/o Ollama, manual chat returns a reply, review before stores
 
