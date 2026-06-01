@@ -7,6 +7,8 @@ cited summary). When no connector applies it falls back to labeled plain chat. L
 
 from __future__ import annotations
 
+import re
+
 from jarvis.cache.sqlite_cache import SQLiteCache
 from jarvis.config import config
 from jarvis.connectors.caching import CachingConnector
@@ -29,6 +31,14 @@ BANNER = (
     "sources with citations. General questions fall back to plain chat.\n"
     "Commands:  :note <text>  |  :notes  |  :recall <query>  |  exit"
 )
+
+# Redact API keys from any error text before it reaches the terminal. Defense in depth: the keyed
+# connectors return empty on a non-200 rather than raising, but a future change must not leak a key.
+_SECRET_PARAM = re.compile(r"(token|apikey)=[^&\s]+", re.IGNORECASE)
+
+
+def _redact(text: str) -> str:
+    return _SECRET_PARAM.sub(r"\1=***", text)
 
 
 def _build_knowledge(llm: LLMClient) -> Knowledge:
@@ -83,7 +93,7 @@ def _loop(
             else:
                 _answer(text, knowledge, orchestrator)
         except Exception as exc:  # keep the REPL alive if a backend call fails
-            print(f"[error] {exc}")
+            print(f"[error] {_redact(str(exc))}")
 
 
 def _answer(text: str, knowledge: Knowledge, orchestrator: Orchestrator) -> None:

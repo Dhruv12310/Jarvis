@@ -48,4 +48,4 @@ in `tasks/plan.md`. Deterministic-first: LLM routes + summarizes only; connector
 - [x] per-connector cache TTLs (markets 60s, news/HN 300s)
 - [x] Verify: 92 offline green; live `selftest` PASS; ruff check + format clean
 
-### ▸ Checkpoint: Phase 1 DoD met (HN + markets + news all verified live; 93 tests + selftest PASS). Next: `/review` → `/code-simplify` → `/ship`
+### ▸ Checkpoint: Phase 1 SHIPPED (GO). 100 tests + live selftest; ruff clean; review/simplify/ship done; ship-gate fixes applied (key redaction in errors + connector error-branch tests). Deferred decisions: docs/DECISIONS.md D7-D10. Next: push + Phase 2 (Organization).

@@ -49,3 +49,48 @@ def test_name_and_description():
     connector = _connector()
     assert connector.name == "markets"
     assert "percent change" in connector.description.lower()
+
+
+def test_symbol_dropped_on_non_200():
+    def handler(request):
+        symbol = request.url.params.get("symbol")
+        if symbol == "NVDA":
+            return httpx.Response(500, json={})
+        return httpx.Response(200, json=_QUOTES.get(symbol, {"c": 0, "dp": 0, "pc": 0}))
+
+    connector = MarketsConnector(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), api_key="k"
+    )
+    titles = [i.title for i in connector.fetch("AAPL NVDA MSFT").items]
+
+    assert "NVDA" not in titles  # dropped on the 500
+    assert "AAPL" in titles
+    assert "MSFT" in titles
+
+
+def test_zero_change_ranks_last_and_no_symbol_dropped():
+    quotes = {
+        "AAA": {"c": 100.0, "dp": 1.5, "pc": 98.5},
+        "BBB": {"c": 100.0, "dp": -1.5, "pc": 101.5},
+        "CCC": {"c": 100.0, "dp": 0.0, "pc": 100.0},
+    }
+
+    def handler(request):
+        return httpx.Response(200, json=quotes.get(request.url.params.get("symbol"), {"c": 0}))
+
+    connector = MarketsConnector(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), api_key="k"
+    )
+    items = connector.fetch("AAA BBB CCC").items
+
+    assert {i.title for i in items} == {"AAA", "BBB", "CCC"}  # none dropped
+    assert items[-1].title == "CCC"  # zero change ranks last
+    assert items[-1].detail.startswith("+0.00%")
+
+
+def test_malformed_quote_json_drops_named_symbol():
+    connector = MarketsConnector(
+        client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}))),
+        api_key="k",
+    )
+    assert connector.fetch("AAPL").items == []

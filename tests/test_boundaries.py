@@ -1,8 +1,10 @@
-"""Architecture boundary guards (SPEC.md DoD #6): keep backend specifics behind their seams.
+"""Architecture boundary guards: keep backend specifics behind their seams.
 
-These turn the spec's rules into automated tests:
-  - raw SQL only in sqlite_store.py
+These turn the project's invariants into automated tests:
+  - raw SQL only in sqlite_store.py and sqlite_cache.py
   - chromadb imported only in chroma_store.py
+  - httpx (outbound HTTP) imported only under connectors/
+  - connectors do not import one another
   - declared runtime dependencies stay within the approved set
 """
 

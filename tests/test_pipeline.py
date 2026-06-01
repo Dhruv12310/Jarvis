@@ -84,3 +84,17 @@ def test_ask_fetches_every_selected_connector():
     assert hn.calls == 1
     assert markets.calls == 1
     assert ans.text == "answer:2"  # both results reach the answerer
+
+
+def test_real_connector_http_error_is_contained():
+    import httpx
+
+    from jarvis.connectors.hn import HackerNewsConnector
+
+    transport = httpx.MockTransport(lambda r: httpx.Response(500, json={}))
+    hn = HackerNewsConnector(client=httpx.Client(transport=transport))
+    knowledge = Knowledge(_FakeRouter(["hn"]), {"hn": hn}, _FakeAnswerer())
+
+    ans = knowledge.ask("q")  # HN raises HTTPStatusError -> pipeline contains it -> empty results
+
+    assert ans.text == "answer:0"

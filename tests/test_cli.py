@@ -186,3 +186,21 @@ def test_loop_chat_turn_falls_back_and_prints_reply(tmp_path, capsys, fake_embed
     _loop(orchestrator, _FakeKnowledge(None), store, vector, fake_embedder)
 
     assert "jarvis (chat)> echo: hello there" in capsys.readouterr().out
+
+
+def test_error_output_redacts_api_keys(tmp_path, capsys, fake_embedder, monkeypatch):
+    store, vector = _backends(tmp_path)
+
+    class _LeakyKnowledge:
+        def ask(self, question):
+            raise RuntimeError("Client error for https://x?token=SECRET123&apikey=ABCDEF")
+
+    lines = iter(["a question", "exit"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
+
+    _loop(None, _LeakyKnowledge(), store, vector, fake_embedder)
+
+    out = capsys.readouterr().out
+    assert "SECRET123" not in out
+    assert "ABCDEF" not in out
+    assert "token=***" in out

@@ -1,6 +1,7 @@
 """HackerNewsConnector: normalizes Algolia HN Search hits into Items. Offline via MockTransport."""
 
 import httpx
+import pytest
 
 from jarvis.connectors.hn import HackerNewsConnector
 
@@ -62,3 +63,10 @@ def test_name_and_description():
     connector = _connector(lambda r: httpx.Response(200, json={"hits": []}))
     assert connector.name == "hn"
     assert "startup" in connector.description.lower()
+
+
+def test_fetch_raises_on_non_200():
+    # HN raises (unlike the keyed connectors); this is the contract the pipeline contains.
+    connector = _connector(lambda r: httpx.Response(500, json={}))
+    with pytest.raises(httpx.HTTPStatusError):
+        connector.fetch("anything")

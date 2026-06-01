@@ -61,3 +61,8 @@ def test_name_and_description():
     connector = _connector(lambda r: httpx.Response(200, json={"articles": []}))
     assert connector.name == "news"
     assert "news" in connector.description.lower()
+
+
+def test_missing_articles_key_yields_no_items():
+    result = _connector(lambda r: httpx.Response(200, json={"totalArticles": 0})).fetch("AI")
+    assert result.items == []
