@@ -29,14 +29,15 @@ acceptance/verification in `tasks/plan.md`. Order is strict: 0 → A → B → C
 - [x] `cli.py` — `:note <text>` save, `:notes` list (via interface, no SQL in CLI)
 - [x] Verify: `test_structured_store.py` (temp DB) round-trip + persistence green; `test_cli.py` dispatch green; `ruff` clean (20 passing). Fully offline, no Ollama needed.
 
-## [ ] Task C — VectorStore + Chroma + embedder  · `feat(stores): VectorStore interface + Chroma + local embedder`
-- [ ] (source-driven) confirm current `ollama` embeddings method name
-- [ ] `llm/embedder.py` — `Embedder` protocol + `OllamaEmbedder.embed`
-- [ ] `stores/vector.py` — `VectorStore` ABC (`add(...metadata=None)`, `query`) + frozen `VectorHit`
-- [ ] `stores/chroma_store.py` — persistent client, collection w/ **no** `embedding_function`, explicit `embeddings=`; **only** `chromadb` import here
-- [ ] `cli.py` — `:note` also embeds; `:recall <query>` returns top hit(s)
-- [ ] `pyproject.toml` += `chromadb`
-- [ ] Verify: `test_vector_store.py` (temp dir + deterministic fake embedder) top-hit green; manual `:recall` works; `ruff` clean
+## [x] Task C — VectorStore + Chroma + embedder  ·  `feat(stores): VectorStore interface, Chroma backend, and local embedder`
+- [x] (source-driven) confirmed chroma 1.5.9 BYO: `PersistentClient` + `get_or_create_collection` (no EF) + explicit `embeddings=`/`query_embeddings=`; ollama `embed(model, input)` -> `.embeddings`
+- [x] `llm/embedder.py` — `Embedder` protocol + `OllamaEmbedder.embed`
+- [x] `stores/vector.py` — `VectorStore` ABC (`add(...metadata=None)`, `query`) + frozen `VectorHit`
+- [x] `stores/chroma_store.py` — persistent client, collection w/ **no** `embedding_function`, explicit `embeddings=`, telemetry off; **only** `chromadb` import here
+- [x] `cli.py` — `:note` also embeds; `:recall <query>` returns top hit(s)
+- [x] `pyproject.toml` += `chromadb`
+- [x] Verify: `test_vector_store.py` (temp dir + deterministic fake embedder) top-hit green; `test_cli.py` full save/embed/recall green; `ruff` clean (26 passing). Offline.
+- [ ] PENDING Ollama: live `:recall` with real `nomic-embed-text` embeddings (needs Ollama running + model pulled)
 
 ### ▸ Checkpoint: Both stores proven — units green w/o Ollama, note saved→listed→recalled, review before glue
 
