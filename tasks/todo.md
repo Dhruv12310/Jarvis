@@ -49,4 +49,4 @@ acceptance/verification in `tasks/plan.md`. Order is strict: 0 → A → B → C
 - [x] Verify: `pytest -q` green w/o Ollama (31 passed, 1 skipped); `selftest` prints clean FAIL when Ollama down; `ruff` clean
 - [x] LIVE: `python -m jarvis selftest` -> PASS; `pytest -m integration` green; full suite 32 passed, 0 skipped
 
-### ▸ Checkpoint: Phase 0 DoD met + review done (2 findings fixed; 34 passed, live integration green). Next: `/code-simplify` → `/ship` (record Mulch learnings + forward-compat notes #3 cosine-vs-L2, #4 data-dir at ship).
+### ▸ Checkpoint: Phase 0 SHIPPED (GO). 46 passed + live integration green; ruff check + format clean. review/simplify/ship done; pre-ship coverage gaps closed (entry dispatch, ollama wrappers, cli branches). Deferred decisions in docs/DECISIONS.md (Mulch CLI not installed). Next: re-author commits to GitHub noreply identity, push to Dhruv12310/Jarvis, then Phase 1 (Knowledge).
