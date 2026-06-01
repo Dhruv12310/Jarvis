@@ -12,7 +12,8 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
 _JARVIS = _ROOT / "jarvis"
-_APPROVED_RUNTIME_DEPS = {"python-dotenv", "ollama", "chromadb"}
+_APPROVED_RUNTIME_DEPS = {"python-dotenv", "ollama", "chromadb", "httpx"}
+_SQL_ALLOWED = {"sqlite_store.py", "sqlite_cache.py"}
 
 _SQL = re.compile(r"\b(SELECT|INSERT|UPDATE|DELETE|CREATE TABLE|PRAGMA)\b", re.IGNORECASE)
 _CHROMA_IMPORT = re.compile(r"^\s*(import chromadb|from chromadb)", re.MULTILINE)
@@ -22,14 +23,14 @@ def _py_files_excluding(name: str) -> list[Path]:
     return [path for path in _JARVIS.rglob("*.py") if path.name != name]
 
 
-def test_no_raw_sql_outside_sqlite_store():
+def test_no_raw_sql_outside_allowed_modules():
     offenders = [
         path.name
-        for path in _py_files_excluding("sqlite_store.py")
-        if _SQL.search(path.read_text(encoding="utf-8"))
+        for path in _JARVIS.rglob("*.py")
+        if path.name not in _SQL_ALLOWED and _SQL.search(path.read_text(encoding="utf-8"))
     ]
 
-    assert offenders == [], f"raw SQL found outside sqlite_store.py: {offenders}"
+    assert offenders == [], f"raw SQL found outside {_SQL_ALLOWED}: {offenders}"
 
 
 def test_no_chromadb_import_outside_chroma_store():

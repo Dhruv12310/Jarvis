@@ -15,9 +15,13 @@ from jarvis.config import config
 
 
 class LLMClient(Protocol):
-    """Anything that turns a prompt into a text completion."""
+    """Anything that turns a prompt into a text completion.
 
-    def generate(self, prompt: str) -> str: ...
+    ``format`` is optional and backward compatible: ``None`` is free text; ``"json"`` constrains the
+    model to valid JSON (used by the Phase 1 router). Phase 0 callers pass nothing.
+    """
+
+    def generate(self, prompt: str, *, format: str | None = None) -> str: ...
 
 
 class OllamaClient:
@@ -27,6 +31,6 @@ class OllamaClient:
         self._model = model or config.llm_model
         self._client = Client(host=host or config.ollama_host)
 
-    def generate(self, prompt: str) -> str:
-        response = self._client.generate(model=self._model, prompt=prompt)
+    def generate(self, prompt: str, *, format: str | None = None) -> str:
+        response = self._client.generate(model=self._model, prompt=prompt, format=format)
         return response.response

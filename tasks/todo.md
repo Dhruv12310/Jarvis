@@ -5,20 +5,23 @@ in `tasks/plan.md`. Deterministic-first: LLM routes + summarizes only; connector
 
 ---
 
-## [ ] Slice 1 — HN end-to-end (keyless)  ·  `feat(knowledge): HN connector with routing, grounded summary, and TTL cache`
+## [x] Slice 1a — plumbing  ·  `feat(knowledge): Phase 1 plumbing (seams, cache, config, LLM format)`
+- [x] `pyproject` += `httpx`; `config` += finnhub/gnews keys, watchlist, TTLs; `.env` placeholders + `.env.example`
+- [x] `llm/client.py` — `generate(prompt, *, format=None)` (backward compatible)
+- [x] `cache/base.py` `Cache` ABC + `cache/sqlite_cache.py` `SQLiteCache` (TTL, WAL; 2nd raw-SQL module)
+- [x] `connectors/base.py` `Connector` + `Source`/`Item`/`ConnectorResult` + JSON (de)serialize
+- [x] `connectors/caching.py` `CachingConnector` (cache hit skips inner; `last_was_cache_hit`)
+- [x] boundary tests updated: SQL allowed in `sqlite_cache.py`; approved deps += httpx
+- [x] Verify: offline suite 60 passed; ruff check + format clean
+
+## [ ] Slice 1b — HN behavior  ·  `feat(knowledge): HN connector with routing, grounded summary, and TTL cache`
 - [ ] (source-driven) verify Algolia HN Search API (endpoint, tags, hit fields)
-- [ ] `pyproject` += `httpx`; `config` += finnhub/gnews keys, watchlist, TTLs; create `.env` placeholders + `.env.example`
-- [ ] `llm/client.py` — `generate(prompt, *, format=None)` (backward compatible)
-- [ ] `cache/base.py` `Cache` ABC + `cache/sqlite_cache.py` `SQLiteCache` (only new raw SQL)
-- [ ] `connectors/base.py` `Connector` + `Source`/`Item`/`ConnectorResult`
 - [ ] `connectors/hn.py` `HackerNewsConnector` (injected `httpx.Client`, normalize -> Items)
-- [ ] `connectors/caching.py` `CachingConnector` (hit skips inner)
 - [ ] `knowledge/router.py` (format=json -> [names], filter unknown, []-on-none)
 - [ ] `knowledge/answerer.py` (grounded + cited; empty -> couldn't find)
 - [ ] `knowledge/pipeline.py` `Knowledge.ask` (None when no connector)
 - [ ] `cli.py` — free-text -> Knowledge; None -> labeled chat; keep :note/:notes/:recall; `(cached)` marker
-- [ ] Verify: offline units green (MockTransport, fake LLM); `-m integration` HN live; manual HN answer + `(cached)`; ruff clean
-- [ ] (sizing) optional split 1a plumbing / 1b HN+pipeline for smaller commits
+- [ ] Verify: offline units (MockTransport, fake LLM); `-m integration` HN live; manual HN answer + `(cached)`; ruff clean
 
 ### ▸ Checkpoint: HN proven — grounded sourced live answer + cache hit; review before keyed connectors
 

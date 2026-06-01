@@ -55,3 +55,36 @@ def test_ensure_dirs_is_idempotent(tmp_path, monkeypatch):
 
     assert (tmp_path / "d").is_dir()
     assert (tmp_path / "v").is_dir()
+
+
+def test_api_keys_default_empty():
+    cfg = Config()
+    assert cfg.finnhub_api_key == ""
+    assert cfg.gnews_api_key == ""
+
+
+def test_api_keys_read_from_env(monkeypatch):
+    monkeypatch.setenv("JARVIS_FINNHUB_API_KEY", "fk")
+    monkeypatch.setenv("JARVIS_GNEWS_API_KEY", "gk")
+    cfg = Config()
+    assert cfg.finnhub_api_key == "fk"
+    assert cfg.gnews_api_key == "gk"
+
+
+def test_default_market_watchlist_is_a_ticker_tuple():
+    cfg = Config()
+    assert isinstance(cfg.market_watchlist, tuple)
+    assert "AAPL" in cfg.market_watchlist
+    assert "NVDA" in cfg.market_watchlist
+
+
+def test_market_watchlist_from_env_is_parsed_and_uppercased(monkeypatch):
+    monkeypatch.setenv("JARVIS_MARKET_WATCHLIST", "tsla, amd ,intc")
+    assert Config().market_watchlist == ("TSLA", "AMD", "INTC")
+
+
+def test_cache_ttls_have_sane_defaults():
+    cfg = Config()
+    assert cfg.cache_ttl_markets > 0
+    assert cfg.cache_ttl_markets <= cfg.cache_ttl_hn  # markets refresh faster than HN
+    assert cfg.cache_ttl_news > 0

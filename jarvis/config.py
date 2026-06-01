@@ -39,6 +39,32 @@ class Config:
         default_factory=lambda: Path(os.environ.get("JARVIS_VECTOR_DIR", str(_DATA / "chroma")))
     )
 
+    # Phase 1: public-data connectors. An empty key means that connector reports "no key" rather
+    # than fetching (it never invents data); the user fills these in .env.
+    finnhub_api_key: str = field(
+        default_factory=lambda: os.environ.get("JARVIS_FINNHUB_API_KEY", "")
+    )
+    gnews_api_key: str = field(default_factory=lambda: os.environ.get("JARVIS_GNEWS_API_KEY", ""))
+    market_watchlist: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            t.strip().upper()
+            for t in os.environ.get(
+                "JARVIS_MARKET_WATCHLIST", "AAPL,MSFT,NVDA,GOOGL,AMZN,META,TSLA"
+            ).split(",")
+            if t.strip()
+        )
+    )
+    # Per-connector cache TTLs (seconds): markets move fast, news/HN are calmer.
+    cache_ttl_markets: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_CACHE_TTL_MARKETS", "60"))
+    )
+    cache_ttl_news: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_CACHE_TTL_NEWS", "300"))
+    )
+    cache_ttl_hn: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_CACHE_TTL_HN", "300"))
+    )
+
     def ensure_dirs(self) -> None:
         """Create the data directories on demand. They are git-ignored and never committed."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)

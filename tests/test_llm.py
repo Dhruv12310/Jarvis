@@ -16,10 +16,12 @@ class _FakeOllama:
     def __init__(self, host=None):
         self.host = host
         self.generate_args = None
+        self.format_arg = None
         self.embed_args = None
 
-    def generate(self, model, prompt):
+    def generate(self, model, prompt, format=None):
         self.generate_args = (model, prompt)
+        self.format_arg = format
         return SimpleNamespace(response="stub reply")
 
     def embed(self, model, input):
@@ -63,3 +65,15 @@ def test_ollama_embedder_returns_first_embedding_as_list(monkeypatch):
 
     assert vector == [0.1, 0.2, 0.3]
     assert isinstance(vector, list)
+
+
+def test_ollama_client_forwards_format(monkeypatch):
+    created = {}
+    monkeypatch.setattr(
+        "jarvis.llm.client.Client",
+        lambda host=None: created.setdefault("client", _FakeOllama(host)),
+    )
+
+    OllamaClient().generate("give me json", format="json")
+
+    assert created["client"].format_arg == "json"
