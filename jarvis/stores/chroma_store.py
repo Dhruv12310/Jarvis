@@ -43,10 +43,13 @@ class ChromaVectorStore(VectorStore):
 
     @staticmethod
     def _to_hits(result) -> list[VectorHit]:
+        # Chroma nests one inner list per query; we send a single query, so take [0] of each.
         ids = result["ids"][0]
         documents = result["documents"][0]
         distances = result["distances"][0]
-        metadatas = (result.get("metadatas") or [[]])[0] or [None] * len(ids)
+        # metadatas is absent/None when nothing was stored; fall back to one None per hit.
+        metadatas_for_query = (result.get("metadatas") or [None])[0]
+        metadatas = metadatas_for_query or [None] * len(ids)
         return [
             VectorHit(id=hit_id, text=text, distance=float(distance), metadata=metadata)
             for hit_id, text, distance, metadata in zip(
