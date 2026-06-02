@@ -62,6 +62,10 @@ class SQLiteStructuredStore(StructuredStore):
         ).fetchall()
         return [self._row_to_note(row) for row in rows]
 
+    def delete_all_notes(self) -> None:
+        self._conn.execute("DELETE FROM notes")
+        self._conn.commit()
+
     def save_signal(self, event: SignalEvent) -> None:
         self._conn.execute(
             "INSERT INTO signals (id, ts, kind, payload, session_id) VALUES (?, ?, ?, ?, ?)",

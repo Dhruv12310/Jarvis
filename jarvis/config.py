@@ -65,6 +65,24 @@ class Config:
         default_factory=lambda: int(os.environ.get("JARVIS_CACHE_TTL_HN", "300"))
     )
 
+    # Phase 2 memory retrieval (Core §7.1). Weights default to 1.0; lambda tunes recency
+    # decay (per hour of age).
+    memory_candidate_pool: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_MEMORY_POOL", "20"))
+    )
+    memory_recency_lambda: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_MEMORY_LAMBDA", "0.02"))
+    )
+    memory_w_rec: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_MEMORY_W_REC", "1.0"))
+    )
+    memory_w_imp: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_MEMORY_W_IMP", "1.0"))
+    )
+    memory_w_rel: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_MEMORY_W_REL", "1.0"))
+    )
+
     def ensure_dirs(self) -> None:
         """Create the data directories on demand. They are git-ignored and never committed."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)

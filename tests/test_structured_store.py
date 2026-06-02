@@ -50,6 +50,16 @@ def test_notes_persist_across_store_instances(tmp_path):
     assert [n.content for n in second.get_notes()] == ["durable"]
 
 
+def test_delete_all_notes_drains_the_table(tmp_path):
+    store = SQLiteStructuredStore(tmp_path / "jarvis.db")
+    store.save_note("one")
+    store.save_note("two")
+
+    store.delete_all_notes()
+
+    assert store.get_notes() == []
+
+
 def test_wal_journal_mode_is_enabled(tmp_path):
     store = SQLiteStructuredStore(tmp_path / "jarvis.db")
 

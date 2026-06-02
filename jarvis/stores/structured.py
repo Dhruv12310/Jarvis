@@ -23,6 +23,8 @@ class Note:
 
 
 class StructuredStore(ABC):
+    # notes are legacy: Phase 0 stored memories here, Phase 2 migrates them into MemoryRecords
+    # (vector store) and retires the table. These three exist only to seed and drain that migration.
     @abstractmethod
     def save_note(self, content: str) -> Note:
         """Persist a note and return it with its assigned id and creation time."""
@@ -30,6 +32,10 @@ class StructuredStore(ABC):
     @abstractmethod
     def get_notes(self, limit: int = 50) -> list[Note]:
         """Return the most recent notes, newest first."""
+
+    @abstractmethod
+    def delete_all_notes(self) -> None:
+        """Drain the legacy notes table (after migrating its rows into MemoryRecords)."""
 
     @abstractmethod
     def save_signal(self, event: SignalEvent) -> None:

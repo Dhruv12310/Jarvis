@@ -6,16 +6,17 @@ import pytest
 
 from jarvis.cli import _answer, _handle_command, _loop
 from jarvis.knowledge.pipeline import Answer
+from jarvis.memory.store import MemoryStore
 from jarvis.orchestrator import Orchestrator
 from jarvis.signals.log import SignalLog
 from jarvis.stores.chroma_store import ChromaVectorStore
 from jarvis.stores.sqlite_store import SQLiteStructuredStore
 
 
-def _backends(tmp_path):
+def _backends(tmp_path, embedder):
     store = SQLiteStructuredStore(tmp_path / "jarvis.db")
-    vector = ChromaVectorStore(tmp_path / "chroma")
-    return store, vector
+    vector = ChromaVectorStore(tmp_path / "chroma", collection="memory", space="cosine")
+    return store, MemoryStore(vector, embedder)
 
 
 class _FailingEmbedder:
@@ -41,33 +42,33 @@ class _FakeKnowledge:
 # --- command dispatch -------------------------------------------------------
 
 
-def test_note_command_saves_embeds_and_reports_id(tmp_path, capsys, fake_embedder):
-    store, vector = _backends(tmp_path)
+def test_note_command_saves_and_confirms(tmp_path, capsys, fake_embedder):
+    store, memory = _backends(tmp_path, fake_embedder)
 
-    _handle_command(":note buy milk", store, vector, fake_embedder)
+    _handle_command(":note buy milk", store, memory)
 
-    assert "saved note #1" in capsys.readouterr().out
-    assert [n.content for n in store.get_notes()] == ["buy milk"]
+    assert "saved to memory" in capsys.readouterr().out
+    assert [r.content for r in memory.all()] == ["buy milk"]
 
 
-def test_recall_finds_the_matching_note(tmp_path, capsys, fake_embedder):
-    store, vector = _backends(tmp_path)
-    _handle_command(":note schedule dentist appointment", store, vector, fake_embedder)
-    _handle_command(":note buy groceries and milk", store, vector, fake_embedder)
+def test_recall_finds_the_matching_memory(tmp_path, capsys, fake_embedder):
+    store, memory = _backends(tmp_path, fake_embedder)
+    _handle_command(":note schedule dentist appointment", store, memory)
+    _handle_command(":note buy groceries and milk", store, memory)
     capsys.readouterr()
 
-    _handle_command(":recall schedule dentist appointment", store, vector, fake_embedder)
+    _handle_command(":recall schedule dentist appointment", store, memory)
 
     assert "schedule dentist appointment" in capsys.readouterr().out
 
 
-def test_notes_command_lists_saved_notes(tmp_path, capsys, fake_embedder):
-    store, vector = _backends(tmp_path)
-    _handle_command(":note alpha", store, vector, fake_embedder)
-    _handle_command(":note beta", store, vector, fake_embedder)
+def test_notes_command_lists_saved_memories(tmp_path, capsys, fake_embedder):
+    store, memory = _backends(tmp_path, fake_embedder)
+    _handle_command(":note alpha", store, memory)
+    _handle_command(":note beta", store, memory)
     capsys.readouterr()
 
-    _handle_command(":notes", store, vector, fake_embedder)
+    _handle_command(":notes", store, memory)
 
     out = capsys.readouterr().out
     assert "alpha" in out
@@ -75,53 +76,53 @@ def test_notes_command_lists_saved_notes(tmp_path, capsys, fake_embedder):
 
 
 def test_note_without_text_shows_usage_and_saves_nothing(tmp_path, capsys, fake_embedder):
-    store, vector = _backends(tmp_path)
+    store, memory = _backends(tmp_path, fake_embedder)
 
-    _handle_command(":note", store, vector, fake_embedder)
+    _handle_command(":note", store, memory)
 
     assert "usage: :note" in capsys.readouterr().out
-    assert store.get_notes() == []
+    assert memory.all() == []
 
 
 def test_recall_without_query_shows_usage(tmp_path, capsys, fake_embedder):
-    store, vector = _backends(tmp_path)
+    store, memory = _backends(tmp_path, fake_embedder)
 
-    _handle_command(":recall", store, vector, fake_embedder)
+    _handle_command(":recall", store, memory)
 
     assert "usage: :recall" in capsys.readouterr().out
 
 
 def test_unknown_command_is_reported(tmp_path, capsys, fake_embedder):
-    store, vector = _backends(tmp_path)
+    store, memory = _backends(tmp_path, fake_embedder)
 
-    _handle_command(":bogus", store, vector, fake_embedder)
+    _handle_command(":bogus", store, memory)
 
     assert "unknown command" in capsys.readouterr().out
 
 
 def test_recall_with_no_matches_reports_empty(tmp_path, capsys, fake_embedder):
-    store, vector = _backends(tmp_path)
+    store, memory = _backends(tmp_path, fake_embedder)
 
-    _handle_command(":recall anything", store, vector, fake_embedder)
+    _handle_command(":recall anything", store, memory)
 
     assert "(no matches)" in capsys.readouterr().out
 
 
 def test_notes_on_empty_store_reports_empty(tmp_path, capsys, fake_embedder):
-    store, vector = _backends(tmp_path)
+    store, memory = _backends(tmp_path, fake_embedder)
 
-    _handle_command(":notes", store, vector, fake_embedder)
+    _handle_command(":notes", store, memory)
 
-    assert "(no notes yet)" in capsys.readouterr().out
+    assert "(no memories yet)" in capsys.readouterr().out
 
 
 def test_note_writes_nothing_when_embedding_fails(tmp_path):
-    store, vector = _backends(tmp_path)
+    store, memory = _backends(tmp_path, _FailingEmbedder())
 
     with pytest.raises(RuntimeError):
-        _handle_command(":note hello", store, vector, _FailingEmbedder())
+        _handle_command(":note hello", store, memory)
 
-    assert store.get_notes() == []
+    assert memory.all() == []  # save embeds before it upserts, so nothing half-commits
 
 
 # --- answer path (knowledge -> grounded, else labeled chat) -----------------
@@ -161,7 +162,7 @@ def test_answer_falls_back_to_labeled_chat_when_no_connector(capsys):
 
 
 def test_loop_survives_a_backend_error_during_a_command(tmp_path, capsys, monkeypatch):
-    store, vector = _backends(tmp_path)
+    store, memory = _backends(tmp_path, _FailingEmbedder())
     lines = iter([":note hello", "exit"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
 
@@ -169,29 +170,28 @@ def test_loop_survives_a_backend_error_during_a_command(tmp_path, capsys, monkey
         orchestrator=None,
         knowledge=_FakeKnowledge(),
         store=store,
-        vector=vector,
-        embedder=_FailingEmbedder(),
+        memory=memory,
         signals=SignalLog(store),
     )
 
     out = capsys.readouterr().out
     assert "[error]" in out  # the failure surfaced and the loop kept going to "exit"
-    assert store.get_notes() == []  # still no half-written note
+    assert memory.all() == []  # still no half-written memory
 
 
 def test_loop_chat_turn_falls_back_and_prints_reply(tmp_path, capsys, fake_embedder, monkeypatch):
-    store, vector = _backends(tmp_path)
+    store, memory = _backends(tmp_path, fake_embedder)
     orchestrator = Orchestrator(_EchoLLM())
     lines = iter(["hello there", "exit"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
 
-    _loop(orchestrator, _FakeKnowledge(None), store, vector, fake_embedder, SignalLog(store))
+    _loop(orchestrator, _FakeKnowledge(None), store, memory, SignalLog(store))
 
     assert "jarvis (chat)> echo: hello there" in capsys.readouterr().out
 
 
 def test_error_output_redacts_api_keys(tmp_path, capsys, fake_embedder, monkeypatch):
-    store, vector = _backends(tmp_path)
+    store, memory = _backends(tmp_path, fake_embedder)
 
     class _LeakyKnowledge:
         def ask(self, question):
@@ -200,7 +200,7 @@ def test_error_output_redacts_api_keys(tmp_path, capsys, fake_embedder, monkeypa
     lines = iter(["a question", "exit"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
 
-    _loop(None, _LeakyKnowledge(), store, vector, fake_embedder, SignalLog(store))
+    _loop(None, _LeakyKnowledge(), store, memory, SignalLog(store))
 
     out = capsys.readouterr().out
     assert "SECRET123" not in out
@@ -209,12 +209,12 @@ def test_error_output_redacts_api_keys(tmp_path, capsys, fake_embedder, monkeypa
 
 
 def test_loop_emits_a_signal_per_turn(tmp_path, fake_embedder, monkeypatch):
-    store, vector = _backends(tmp_path)
+    store, memory = _backends(tmp_path, fake_embedder)
     signals = SignalLog(store, session_id="s")
     lines = iter([":notes", "exit"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
 
-    _loop(Orchestrator(_EchoLLM()), _FakeKnowledge(None), store, vector, fake_embedder, signals)
+    _loop(Orchestrator(_EchoLLM()), _FakeKnowledge(None), store, memory, signals)
 
     events = store.get_signals()
     assert any(e.kind == "command" and e.payload.get("command") == "notes" for e in events)

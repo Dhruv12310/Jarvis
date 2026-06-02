@@ -29,3 +29,13 @@ class VectorStore(ABC):
     @abstractmethod
     def query(self, embedding: Sequence[float], k: int = 5) -> list[VectorHit]:
         """Return the ``k`` nearest stored items to ``embedding``, closest first."""
+
+    @abstractmethod
+    def upsert(
+        self, id: str, text: str, embedding: Sequence[float], metadata: dict | None = None
+    ) -> None:
+        """Add or replace the item under ``id`` (used to refresh a memory, e.g. last_accessed)."""
+
+    @abstractmethod
+    def list_all(self, limit: int = 50) -> list[VectorHit]:
+        """Return up to ``limit`` stored items (unordered, no distance) for enumeration."""
