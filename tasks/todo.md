@@ -29,13 +29,14 @@ Deterministic-first: LLM only phrases. **Signal capture goes in FIRST (non-negot
 - [x] `cli.py` — `:goal add <text>`, `:goals`, `:goal done <id>` (each emits a signal)
 - [x] Verify: unit (CRUD + persistence + CLI dispatch); 132 green; ruff clean
 
-## [ ] Slice 3a — Calendar READ (OAuth)  ·  `feat(calendar): read Google Calendar via OAuth (read-only)`   [the risk; read first]
-- [ ] (source-driven) verify Google OAuth InstalledApp flow + Calendar v3 `events.list` + event resource shape
-- [ ] pyproject += 3 google libs; approved deps updated; boundary guard: google libs only under `calendar/`
-- [ ] config: `google_credentials_path`/`google_token_path` (./data/, git-ignored)
-- [ ] `calendar/oauth.py` (flow + token persist/refresh); `calendar/client.py` `list_events` -> CalendarEvent
-- [ ] `__main__.py` `calendar-auth`; `cli.py` `:cal`/`:agenda`; docs: step-by-step Google Cloud setup (Desktop client, consent TESTING + own account, credentials.json -> ./data/)
-- [ ] Verify: unit (fake google service normalization); integration skips w/o token; manual `calendar-auth` + `:cal`; ruff clean
+## [~] Slice 3a — Calendar READ (OAuth)  ·  `feat(calendar): read Google Calendar via OAuth (read-only)`   [the risk; read first]
+- [x] (source-driven) verify Google OAuth InstalledApp flow + Calendar v3 `events.list` + event resource shape
+- [x] pyproject += 3 google libs; approved deps updated; boundary guard: google libs only under `calendar/`
+- [x] config: `google_credentials_path`/`google_token_path` (./data/, git-ignored)
+- [x] `calendar/oauth.py` (flow + token persist/refresh); `calendar/client.py` `list_events` -> CalendarEvent
+- [x] `__main__.py` `calendar-auth`; `cli.py` `:cal`/`:agenda`; docs: step-by-step Google Cloud setup (Desktop client, consent TESTING + own account, credentials.json -> ./data/)
+- [x] Verify: unit (fake google service normalization, query params, oauth guard paths); 141 green; ruff clean
+- [ ] **PENDING USER:** manual `calendar-auth` + `:cal` live (needs one-time Google Cloud setup — see docs/google-calendar-setup.md)
 
 ### ▸ Checkpoint: Calendar read works — DECISION: proceed to 3b (write) or defer it (pressure-release valve) and go to briefing on read-only
 
