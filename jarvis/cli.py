@@ -31,7 +31,8 @@ from jarvis.stores.structured import StructuredStore
 BANNER = (
     "Jarvis (Phase 2). Ask about markets, AI/business news, or HN/YC and answers come from live\n"
     "sources with citations. General questions fall back to plain chat.\n"
-    "Commands:  :note <text>  |  :notes  |  :recall <query>  |  :signals  |  exit"
+    "Commands:  :note <text>  |  :notes  |  :recall <query>\n"
+    "           :goal add <text>  |  :goals  |  :goal done <id>  |  :signals  |  exit"
 )
 
 # Redact API keys from any error text before it reaches the terminal. Defense in depth: the keyed
@@ -120,6 +121,25 @@ def _answer(text: str, knowledge: Knowledge, orchestrator: Orchestrator) -> dict
     return {"path": "knowledge", "cached": result.cached}
 
 
+def _handle_goal(argument: str, store: StructuredStore) -> None:
+    sub, _, rest = argument.partition(" ")
+    sub, rest = sub.lower(), rest.strip()
+    if sub == "add":
+        if not rest:
+            print("usage: :goal add <text>")
+            return
+        goal = store.save_goal(rest)
+        print(f"added goal #{goal.id}")
+    elif sub == "done":
+        if not rest.isdigit():
+            print("usage: :goal done <id>")
+            return
+        goal = store.update_goal(int(rest), status="done", progress=1.0)
+        print(f"goal #{goal.id} done")
+    else:
+        print("usage: :goal add <text> | :goal done <id>")
+
+
 def _handle_command(
     text: str,
     store: StructuredStore,
@@ -153,6 +173,16 @@ def _handle_command(
             return
         for record in results:
             print(f"  {record.content}")
+    elif command == "goal":
+        _handle_goal(argument, store)
+    elif command == "goals":
+        goals = store.get_goals()
+        if not goals:
+            print("(no goals yet)")
+            return
+        for goal in goals:
+            mark = "x" if goal.status == "done" else " "
+            print(f"  [{mark}] #{goal.id}  {goal.description}")
     elif command == "signals":
         events = store.get_signals(limit=20)
         if not events:

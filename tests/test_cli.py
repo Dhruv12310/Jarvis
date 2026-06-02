@@ -125,6 +125,50 @@ def test_note_writes_nothing_when_embedding_fails(tmp_path):
     assert memory.all() == []  # save embeds before it upserts, so nothing half-commits
 
 
+# --- goals ------------------------------------------------------------------
+
+
+def test_goal_add_then_list_shows_it(tmp_path, capsys, fake_embedder):
+    store, memory = _backends(tmp_path, fake_embedder)
+    _handle_command(":goal add learn rust", store, memory)
+    capsys.readouterr()
+
+    _handle_command(":goals", store, memory)
+
+    out = capsys.readouterr().out
+    assert "learn rust" in out
+    assert "[ ]" in out  # active
+
+
+def test_goal_done_marks_it_complete(tmp_path, capsys, fake_embedder):
+    store, memory = _backends(tmp_path, fake_embedder)
+    _handle_command(":goal add ship phase 2", store, memory)
+    goal_id = store.get_goals()[0].id
+    capsys.readouterr()
+
+    _handle_command(f":goal done {goal_id}", store, memory)
+    _handle_command(":goals", store, memory)
+
+    assert "[x]" in capsys.readouterr().out
+
+
+def test_goal_add_without_text_shows_usage(tmp_path, capsys, fake_embedder):
+    store, memory = _backends(tmp_path, fake_embedder)
+
+    _handle_command(":goal add", store, memory)
+
+    assert "usage: :goal add" in capsys.readouterr().out
+    assert store.get_goals() == []
+
+
+def test_goals_on_empty_store_reports_empty(tmp_path, capsys, fake_embedder):
+    store, memory = _backends(tmp_path, fake_embedder)
+
+    _handle_command(":goals", store, memory)
+
+    assert "(no goals yet)" in capsys.readouterr().out
+
+
 # --- answer path (knowledge -> grounded, else labeled chat) -----------------
 
 

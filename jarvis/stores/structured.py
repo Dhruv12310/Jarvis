@@ -22,6 +22,17 @@ class Note:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class Goal:
+    id: int
+    description: str
+    status: str  # active|done
+    progress: float  # 0.0..1.0
+    priority: str  # low|medium|high
+    deadline: datetime | None
+    created_at: datetime
+
+
 class StructuredStore(ABC):
     # notes are legacy: Phase 0 stored memories here, Phase 2 migrates them into MemoryRecords
     # (vector store) and retires the table. These three exist only to seed and drain that migration.
@@ -36,6 +47,22 @@ class StructuredStore(ABC):
     @abstractmethod
     def delete_all_notes(self) -> None:
         """Drain the legacy notes table (after migrating its rows into MemoryRecords)."""
+
+    @abstractmethod
+    def save_goal(
+        self, description: str, *, priority: str = "medium", deadline: datetime | None = None
+    ) -> Goal:
+        """Persist a new active goal (progress 0.0) and return it with its assigned id."""
+
+    @abstractmethod
+    def get_goals(self, status: str | None = None) -> list[Goal]:
+        """Return goals newest first, optionally filtered by status (active|done)."""
+
+    @abstractmethod
+    def update_goal(
+        self, goal_id: int, *, status: str | None = None, progress: float | None = None
+    ) -> Goal:
+        """Set a goal's status and/or progress; return it. Raise LookupError if absent."""
 
     @abstractmethod
     def save_signal(self, event: SignalEvent) -> None:
