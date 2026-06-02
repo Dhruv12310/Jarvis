@@ -14,13 +14,13 @@ Deterministic-first: LLM only phrases. **Signal capture goes in FIRST (non-negot
 
 ### ▸ Checkpoint: Logging is ON — review before memory
 
-## [ ] Slice 1b — Memory store + :note migration  ·  `feat(memory): typed MemoryRecord store with recency+importance+relevance retrieval`
-- [ ] (source-driven) verify Chroma cosine collection + `upsert` on installed chromadb
-- [ ] `vector.py`/`chroma_store.py` += `upsert` (D3) + cosine `space` (D1)
-- [ ] `memory/record.py` `MemoryRecord` (§5.1); `memory/store.py` `MemoryStore.save` + `.retrieve` (§7.1: recency+importance+relevance, normalized top-K, bump last_accessed)
-- [ ] importance heuristic; memory population EXPLICIT-only
-- [ ] MIGRATION: existing notes -> MemoryRecords (no orphans); retire notes table; `:note`/`:recall` via MemoryStore (behavior preserved)
-- [ ] Verify: unit (round-trip, §7.1 ranking, last_accessed bump, migration no-loss); `:note`/`:recall` intact; ruff clean
+## [x] Slice 1b — Memory store + :note migration  ·  `feat(memory): real MemoryRecord store with deterministic retrieval`
+- [x] (source-driven) verify Chroma cosine collection + `upsert` on installed chromadb
+- [x] `vector.py`/`chroma_store.py` += `upsert` (D3) + cosine `space` (D1) + `list_all`
+- [x] `memory/record.py` `MemoryRecord` (§5.1); `memory/store.py` `MemoryStore.save` + `.retrieve` (§7.1: recency+importance+relevance, normalized top-K, bump last_accessed)
+- [x] importance heuristic; memory population EXPLICIT-only (`remember(explicit=True)`)
+- [x] MIGRATION: existing notes -> MemoryRecords (no orphans); drain notes table (idempotent); `:note`/`:recall` via MemoryStore (behavior preserved)
+- [x] Verify: unit (round-trip, §7.1 ranking, last_accessed bump, migration no-loss); `:note`/`:recall` intact; 119 green; ruff clean
 
 ### ▸ Checkpoint: Memory real
 
