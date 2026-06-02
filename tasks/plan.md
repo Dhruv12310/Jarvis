@@ -1,184 +1,201 @@
-# Implementation Plan: Jarvis — Phase 1 (Knowledge / Retrieval)
+# Implementation Plan: Jarvis — Phase 2 (Organization)
 
-> Derived from SPEC.md (validated; decisions locked). Reactive, grounded, sourced Q&A over live
-> public data. Deterministic-first: the LLM only routes + summarizes; connectors fetch
-> deterministically. One vertical slice per commit; a slice is done only when its acceptance +
-> verification pass. Phase 0 plan is in git history.
+> Derived from SPEC.md (validated; decisions locked). Implements Core spec Stages 1–3. Big phase, so
+> the order PROTECTS the priority: signal capture lands first; calendar (the risk) is split read-first /
+> write-deferrable. One vertical slice per commit. Phase 0–1 plans are in git history.
 
 ## Overview
 
-Add a pluggable `Connector` seam and three public-data connectors (HN keyless, Finnhub markets,
-GNews news), a SQLite TTL cache applied via a `CachingConnector` decorator, and an LLM
-route -> fetch -> summarize pipeline that answers only from fetched data with citations. HN is built
-first (keyless) so the whole path is proven before any API keys exist.
+Jarvis starts organizing: it logs every interaction (signal capture, Stage 1 — highest leverage, first),
+has a real typed-MemoryRecord store with §7.1 retrieval (Stages 2–3), tracks goals, reads (and, if scope
+allows, writes-with-confirmation) the user's Google Calendar, and produces an on-demand daily briefing.
+Deterministic-first throughout; the LLM only phrases. Still reactive — no learning/proactivity.
 
 ## Architecture Decisions (locked in SPEC.md)
 
-- Connectors behind a `Connector` interface; outbound HTTP lives ONLY in `connectors/` (trust
-  boundary, enforced by a boundary test). Connectors are independent (no cross-imports).
-- Cache behind a `Cache` interface, SQLite impl, applied as a `CachingConnector` decorator (cache
-  logic written once, not per connector). Redis deferred.
-- LLM = Tier-1 conductor: `Router` (format="json") picks connectors; `Answerer` summarizes ONLY the
-  fetched data with citations; empty -> "couldn't find current information", never model memory.
-- Markets = Finnhub (movers = deterministic %-change over a configurable watchlist); News = GNews.
-- No-connector-match -> labeled Phase 0 plain chat (general Q&A still works).
-- API keys via `.env` placeholders (created for the user to fill); never committed/logged.
-- New runtime dep: `httpx` (approved set += httpx). No Redis, no framework.
+- **Signal capture first, always-on, cheap, non-blocking** — one append per interaction via
+  StructuredStore; a logging failure is swallowed, never breaks a turn. Nothing learns from it yet.
+- **Memory = typed MemoryRecord in a COSINE Chroma collection** (resolves D1) + deterministic §7.1
+  recency+importance+relevance top-K; `last_accessed_at` bumped on retrieval via **VectorStore.upsert**
+  (resolves D3). Importance is a heuristic. Memory population is EXPLICIT-only (notes/remember).
+- **`:note`/`:recall` migrate to MemoryRecord** with a clean data migration (existing notes -> records,
+  not orphaned); behavior preserved. The Phase 0 `notes` table is retired.
+- **Calendar is the first PRIVATE integration** — Google libs (3 official) confined to `jarvis/calendar/`
+  behind a new boundary guard; OAuth token + credentials.json are secrets in `./data/` (git-ignored);
+  calendar data stays local. Writes only after explicit confirmation.
+- **Briefing** assembles calendar + goals + a Phase-1 knowledge digest deterministically; the LLM phrases.
+- New deps: the 3 google libs. No scheduler daemon, no async.
 
 ## Dependency Graph
 
 ```
-Slice 1  HN end-to-end (keyless)  [foundational]
-  foundation: pyproject(+httpx) + config(keys/TTL/watchlist) + .env placeholders + LLMClient `format=`
+Slice 1a  Signal capture  [FIRST - non-negotiable]
+   SignalEvent + SignalLog + StructuredStore.save_signal/get_signals + wire into every CLI turn
         |
-  cache/base + cache/sqlite_cache          connectors/base (Connector + Source/Item/ConnectorResult)
-        \________________________  ________________________/
-                                 \/
-                  connectors/caching (CachingConnector)   connectors/hn (HackerNewsConnector)
-                                 |
-       knowledge/router (format=json) -> deterministic fetch -> knowledge/answerer -> knowledge/pipeline
-                                 |
-       cli: free-text -> Knowledge; no-match -> labeled chat; keep :note/:notes/:recall; (cached) marker
-        v
-Slice 2  Markets (Finnhub)  -> connectors/markets (watchlist quotes -> %-change movers) + register
-        v
-Slice 3  News (GNews)       -> connectors/news + register
-        v
-Slice 4  Harden            -> selftest (HN live) + boundary guards + routing robustness + cache tuning
+Slice 1b  Memory store + :note migration
+   VectorStore.upsert (D3) + ChromaVectorStore cosine (D1)
+   MemoryRecord + MemoryStore (save; §7.1 retrieve; bump last_accessed)
+   migrate notes -> MemoryRecords; :note/:recall via MemoryStore; retire notes table
+        |
+Slice 2   Goals CRUD     StructuredStore goals table + Goal value object + :goal add/list/done
+        |
+Slice 3a  Calendar READ (OAuth)   [the risk - read first]
+   +3 google deps; jarvis/calendar/{oauth,client}; calendar-auth flow; list_events; :cal
+   boundary guard: google libs only under calendar/
+        |
+Slice 3b  Calendar confirmed-WRITE   [DEFERRABLE pressure-release valve]
+   create_event; LLM proposes event from NL -> confirm gate -> execute; :schedule
+        |
+Slice 4   Daily briefing   assemble(today's calendar + active goals + knowledge digest) -> LLM phrases
 ```
 
-Slice 1 establishes the seams + pipeline. Slices 2 and 3 are independent connectors against the same
-interface, but both edit the pipeline's connector registry, so run 2 then 3. Slice 4 depends on all.
-
-> **Sizing note:** Slice 1 is **Large** (the foundational slice: seams + cache + HN + pipeline + CLI,
-> ~10 source files). It is buildable as one green commit, but for reviewability it can be split into
-> **1a (plumbing: deps/config/.env/LLMClient/Cache/CachingConnector/Connector base)** and
-> **1b (behavior: HN connector + router/answerer/pipeline + CLI)**. Recommend 1a/1b; confirm in review.
+Order: 1a (logging on) -> 1b (memory) -> 2 (goals) -> 3a (calendar read) -> 3b (calendar write, deferrable)
+-> 4 (briefing needs goals + calendar-read + Phase 1 knowledge). 1a/1b/2 are independent of calendar.
 
 ## Task List
 
-### Slice 1 — HN end-to-end (keyless)
+### Slice 1a — Signal capture (turn it ON first)
+**Description:** Emit a structured `SignalEvent` for every interaction, appended via StructuredStore.
+Cheap, append-only, swallow-on-failure. The single highest-leverage thing in the phase.
 
-**Source-driven first:** verify the Algolia HN Search API against current docs (base URL,
-`search` vs `search_by_date`, `tags`=story/front_page, hit fields `title`/`url`/`points`/
-`num_comments`/`objectID`/`created_at`).
+**Acceptance:**
+- [ ] `signals/event.py`: frozen `SignalEvent(id, ts, kind, payload, session_id)` (Core §5.4).
+- [ ] `stores/structured.py` + `sqlite_store.py`: `save_signal(event)` + `get_signals(limit)` on a new
+  append-only `signals` table (raw SQL only in sqlite_store).
+- [ ] `signals/log.py`: `SignalLog.emit(kind, payload)` builds + saves a SignalEvent under a per-session
+  id; **catches and swallows any error** (never propagates into the interaction).
+- [ ] `cli.py`: every turn (free-text question, each `:` command, briefing) emits a SignalEvent
+  (kind + minimal payload: which path/connector ran, outcome). A `:signals` inspector command lists recent.
 
-**Acceptance criteria:**
-- [ ] `pyproject.toml` declares `httpx`; `pip install -e ".[dev]"` succeeds.
-- [ ] `config.py` adds `finnhub_api_key`, `gnews_api_key` (env, may be empty), `market_watchlist`
-  (default `AAPL,MSFT,NVDA,GOOGL,AMZN,META,TSLA`), per-connector cache TTLs. `.env` created with empty
-  key placeholders; `.env.example` documents them.
-- [ ] `llm/client.py`: `generate(prompt, *, format=None)` forwards `format` to ollama; Phase 0 callers
-  unaffected (default None).
-- [ ] `cache/base.py` `Cache` ABC (`get(key)->str|None` returns fresh-only, `set(key, value, ttl)`);
-  `cache/sqlite_cache.py` `SQLiteCache` (table `cache(key PK, value, expires_at)`; the ONLY new raw-SQL
-  module).
-- [ ] `connectors/base.py`: `Connector` ABC + frozen `Source`/`Item`/`ConnectorResult`.
-- [ ] `connectors/hn.py`: `HackerNewsConnector` (name `"hn"`, description) fetches via an injected
-  `httpx.Client`, normalizes hits -> `Item`s (title, detail=points/comments, url, extra).
-- [ ] `connectors/caching.py`: `CachingConnector(inner, cache, ttl)` — cache hit skips `inner.fetch`.
-- [ ] `knowledge/router.py`: `Router(llm, connectors).route(question)->[names]` via `format="json"`;
-  filters unknown names; `[]` on none/garbage.
-- [ ] `knowledge/answerer.py`: `Answerer(llm).answer(question, results)->str` grounded + cited; empty
-  results -> "couldn't find current information".
-- [ ] `knowledge/pipeline.py`: `Knowledge.ask(question)->str|None` (None when no connector matched).
-- [ ] `cli.py`: free-text -> `Knowledge.ask`; None -> labeled plain-chat fallback; keep
-  `:note`/`:notes`/`:recall`; show `(cached)` on cache hits.
+**Verification:** unit — emit grows the log; event shape; a forced StructuredStore failure does NOT
+propagate. `pytest -q tests/test_signals.py` green; manual: run a few turns, `:signals` shows them. ruff clean.
+**Files:** `signals/{__init__,event,log}.py`, `stores/structured.py`, `stores/sqlite_store.py`, `cli.py`,
+`tests/test_signals.py`. **Scope:** M.
+**Commit:** `feat(signals): append-only signal capture on every interaction`
 
-**Verification:**
-- [ ] Unit (offline): HN normalization via `httpx.MockTransport`; `SQLiteCache` TTL fresh/expired;
-  `CachingConnector` call-count (2nd within TTL skips inner); router parse (fake-LLM JSON, unknown
-  filtered, garbage->[]); answerer grounding (fake LLM, empty->couldn't-find); pipeline wiring +
-  cache-hit. `pytest -q` green with no network/Ollama.
-- [ ] Integration: `pytest -q -m integration` -> HN hits real Algolia, returns items.
-- [ ] Manual (Ollama up): ask "what's new on HN about AI" -> grounded sourced summary; repeat ->
-  `(cached)`.
-- [ ] `ruff check .` + `ruff format --check .` clean.
+### Checkpoint: Logging is ON
+- [ ] Every interaction records a SignalEvent; capture failure can't break a turn. Review before memory.
 
-**Files:** `pyproject.toml`, `config.py`, `.env`, `.env.example`, `llm/client.py`,
-`cache/{__init__,base,sqlite_cache}.py`, `connectors/{__init__,base,hn,caching}.py`,
-`knowledge/{__init__,router,answerer,pipeline}.py`, `cli.py`, `tests/test_sqlite_cache.py`,
-`tests/test_connectors_hn.py`, `tests/test_caching_connector.py`, `tests/test_router.py`,
-`tests/test_answerer.py`, `tests/test_pipeline.py`, `tests/test_boundaries.py` (update).
-**Scope:** L (split 1a/1b recommended).
-**Commit:** `feat(knowledge): HN connector with routing, grounded summary, and TTL cache`
+### Slice 1b — Memory store + :note/:recall migration
+**Source-driven first:** confirm Chroma cosine collection (`metadata={"hnsw:space":"cosine"}`) and
+`collection.upsert` semantics on the installed chromadb.
 
-### Checkpoint: HN proven
-- [ ] Offline suite green, ruff clean; live HN answer is grounded + cited; repeat shows `(cached)`.
-- [ ] Review before adding the keyed connectors.
+**Acceptance:**
+- [ ] `stores/vector.py` + `chroma_store.py`: add `upsert(id, text, embedding, metadata)` (D3); allow a
+  `space` arg so the memory collection is **cosine** (D1); Phase 0 default unchanged for any remaining use.
+- [ ] `memory/record.py`: frozen `MemoryRecord` (Core §5.1 fields).
+- [ ] `memory/store.py`: `MemoryStore(vector, embedder)` with `save(record)` (embed + upsert into cosine
+  collection, scalar fields in metadata) and `retrieve(query, k)` implementing **§7.1** deterministically
+  (recency=exp(-λ·hrs), importance, relevance=cosine; normalize each to [0..1] over the candidate pool;
+  weights from config; top-K; **bump last_accessed_at** via upsert). Importance heuristic helper.
+- [ ] **Migration**: move existing `notes` rows -> MemoryRecords (type=observation, tier=observational),
+  not orphaned; then retire the `notes` table path. `:note` -> `MemoryStore.save`; `:recall` ->
+  `MemoryStore.retrieve`. Phase 0 `:note`/`:recall` behavior preserved.
 
-### Slice 2 — Markets (Finnhub)
+**Verification:** unit — record round-trip; §7.1 ranking moves with recency/importance/relevance (fake
+embedder); last_accessed bumped; migration moves notes without loss; `:note`/`:recall` still work.
+Old `test_structured_store` note tests / `test_cli` note tests updated to the new model. ruff clean.
+**Files:** `stores/vector.py`, `stores/chroma_store.py`, `memory/{__init__,record,store}.py`, `config.py`
+(weights/λ/pool), `cli.py`, migration code (in sqlite_store or a small migrate helper),
+`tests/test_memory_store.py`, updated note tests. **Scope:** L.
+**Commit:** `feat(memory): typed MemoryRecord store with recency+importance+relevance retrieval`
 
-**Source-driven first:** verify Finnhub `/quote` (auth = `token` query param; fields
-`c`=current, `d`=change, `dp`=percent, `h`/`l`/`o`/`pc`) + live free-tier limit.
+### Checkpoint: Memory real
+- [ ] MemoryRecords round-trip; §7.1 retrieval unit-tested; notes migrated, `:note`/`:recall` intact.
 
-**Acceptance criteria:**
-- [ ] `connectors/markets.py`: `MarketsConnector` (name `"markets"`) — fetch quotes for the watchlist
-  (plus any tickers detected in the query), compute %-change deterministically, rank movers ->
-  `Item`s (e.g. detail "NVDA +2.3% to $X", extra `{change_pct, price}`); cite Finnhub. Reads
-  `config.finnhub_api_key`; **no key -> empty `ConnectorResult` with a clear note** so the answerer
-  says it couldn't fetch (never invents).
-- [ ] Registered in the pipeline's connector set, wrapped in `CachingConnector` (markets TTL, short).
+### Slice 2 — Goal / project memory
+**Acceptance:**
+- [ ] `stores/structured.py`: frozen `Goal(id, description, status, progress, priority, deadline, created_at)`;
+  StructuredStore `save_goal`, `get_goals(status?)`, `update_goal(id, ...)` (status/progress).
+- [ ] `sqlite_store.py`: `goals` table. `cli.py`: `:goal add <text>`, `:goals`, `:goal done <id>`.
+  (LLM may optionally refine the phrasing; storage is deterministic.)
 
-**Verification:** unit (MockTransport fixture -> %-change math + ranking + no-key path); integration
-skips without `JARVIS_FINNHUB_API_KEY`; manual "what moved today" with key. ruff clean.
-**Files:** `connectors/markets.py`, pipeline registration, `tests/test_connectors_markets.py`.
-**Scope:** M. **Commit:** `feat(connectors): markets connector (Finnhub) with deterministic movers`
+**Verification:** unit — add/list/update/complete round-trip + persistence (temp SQLite); CLI dispatch.
+Each goal command emits a SignalEvent (Slice 1a). ruff clean.
+**Files:** `stores/structured.py`, `stores/sqlite_store.py`, `cli.py`, `tests/test_goals.py`. **Scope:** M.
+**Commit:** `feat(goals): goal/project CRUD via the structured store`
 
-### Slice 3 — News (GNews)
+### Slice 3a — Calendar READ (Google OAuth)  [the risk; read first]
+**Source-driven first:** verify against CURRENT Google docs — OAuth 2.0 InstalledApp flow (scopes:
+`calendar.readonly` for this slice; `credentials.json` shape; token persistence/refresh) and Calendar v3
+`events.list` (params, event resource: start/end dateTime vs date, summary).
 
-**Source-driven first:** verify GNews `/search` (and/or `/top-headlines`) (auth = `apikey`/`token`
-param; fields `title`/`description`/`url`/`source`/`publishedAt`) + free-tier limit.
+**Acceptance:**
+- [ ] pyproject += `google-api-python-client`, `google-auth-oauthlib`, `google-auth-httplib2`; approved
+  deps updated; boundary test: google libs imported only under `jarvis/calendar/`.
+- [ ] config: `google_credentials_path` (`./data/credentials.json`), `google_token_path`
+  (`./data/google_token.json`); both git-ignored.
+- [ ] `calendar/oauth.py`: InstalledApp flow + token load/refresh/persist (the only google-auth importer).
+- [ ] `calendar/client.py`: `CalendarClient(service)` with `list_events(time_min, time_max)` ->
+  normalized `CalendarEvent`s (the only googleapiclient importer); a factory builds the authed service.
+- [ ] `__main__.py`: `python -m jarvis calendar-auth` runs the one-time browser auth + persists the token.
+- [ ] `cli.py`: `:cal` / `:agenda` lists today's/upcoming events (emits a `calendar_read` signal).
+- [ ] **Docs:** a step-by-step Google Cloud setup note (project, enable API, Desktop client, consent
+  screen TESTING + own account, download credentials.json to ./data/) in `docs/` or `.env.example`.
 
-**Acceptance criteria:**
-- [ ] `connectors/news.py`: `NewsConnector` (name `"news"`) -> headlines for the query -> `Item`s
-  (title, detail = source + published, url); cite GNews; no-key -> empty + note.
-- [ ] Registered (CachingConnector, news TTL).
+**Verification:** unit — inject a **fake Google service**; `list_events` normalizes the fake event
+resource; no network. Integration (`-m integration`) skips unless `data/google_token.json` exists.
+Manual: `calendar-auth` then `:cal` shows real events. ruff clean.
+**Files:** `pyproject.toml`, `config.py`, `calendar/{__init__,oauth,client}.py`, `__main__.py`, `cli.py`,
+`tests/test_calendar.py`, `tests/test_boundaries.py` (google guard), docs setup note. **Scope:** L.
+**Commit:** `feat(calendar): read Google Calendar via OAuth (read-only)`
 
-**Verification:** unit (fixture normalization + no-key path); integration skips without
-`JARVIS_GNEWS_API_KEY`; manual "latest in AI/LLMs". ruff clean.
-**Files:** `connectors/news.py`, pipeline registration, `tests/test_connectors_news.py`.
-**Scope:** M. **Commit:** `feat(connectors): news connector (GNews)`
+### Checkpoint: Calendar read works (briefing now has its data)
+- [ ] Real events read post-OAuth; offline tests via fake service; boundary guard passes. **Decision
+  point:** proceed to confirmed-write (3b) or, if OAuth ate the budget, defer 3b and go straight to the
+  briefing (4) on read-only — the pressure-release valve.
 
-### Checkpoint: all three connectors
-- [ ] Offline suite green; each connector demonstrable live (HN always; markets/news with keys).
-- [ ] Review before hardening.
+### Slice 3b — Calendar confirmed-WRITE  [DEFERRABLE]
+**Source-driven first:** verify Calendar v3 `events.insert` + the `calendar.events` write scope (re-auth
+needed if the read-only token lacks write scope).
 
-### Slice 4 — Harden + DoD self-test + boundary guards
+**Acceptance:**
+- [ ] `calendar/client.py`: `create_event(event)` (events.insert).
+- [ ] `cli.py`: `:schedule <natural language>` -> the LLM proposes a structured event (deterministic
+  parse/validation of the proposal) -> CLI prints it -> user confirms `y` -> deterministic `create_event`.
+  Never a silent mutation; a `calendar_write` signal on confirm.
 
-**Acceptance criteria:**
-- [ ] Routing robustness: multi-connector selection; none-match -> labeled chat; malformed router
-  output -> `[]` gracefully.
-- [ ] `selftest`: live HN route->fetch->summarize prints PASS; markets/news steps skip without keys.
-- [ ] `tests/test_boundaries.py` extended: `httpx` imported only under `connectors/`; raw SQL only in
-  `sqlite_store.py` + `cache/sqlite_cache.py`; no connector imports another connector; declared runtime
-  deps ⊆ {python-dotenv, ollama, chromadb, httpx}.
-- [ ] Per-connector cache TTLs tuned (markets short; news/HN moderate).
+**Verification:** unit — fake service; assert `create_event` is called ONLY after the confirm gate (a `n`
+or non-confirm leaves the calendar untouched). Manual: `:schedule` then confirm creates a real event. ruff.
+**Files:** `calendar/client.py`, `cli.py`, `tests/test_calendar.py`. **Scope:** M.
+**Commit:** `feat(calendar): confirmed event creation (LLM proposes, user confirms, code executes)`
 
-**Verification:** `pytest -q` offline green; `pytest -q -m integration` HN green;
-`python -m jarvis selftest` PASS; `ruff check`/`format --check` clean.
-**Files:** `knowledge/pipeline.py`, `jarvis/selftest.py`, `tests/test_boundaries.py`,
-`tests/test_pipeline.py`.
-**Scope:** M. **Commit:** `test(knowledge): Phase 1 DoD self-test + boundary guards`
+### Slice 4 — Daily briefing
+**Acceptance:**
+- [ ] `briefing.py`: deterministically assemble today's calendar events + active goals + a Phase-1
+  knowledge digest (reuse the Knowledge pipeline for project/goal-relevant topics) into a DATA block; the
+  LLM phrases it into a briefing; sources cited where it pulled live data.
+- [ ] `cli.py`/`__main__.py`: a `briefing` command (emits a `briefing` signal). Empty sections handled
+  (no calendar / no goals / no digest -> still a coherent briefing).
 
-### Checkpoint: Phase 1 complete
-- [ ] All SPEC.md DoD met; `selftest` PASS; offline + HN-integration green; ruff clean.
-- [ ] Proceed `/test` -> `/review` -> `/code-simplify` -> `/ship`.
+**Verification:** unit — fake calendar + goals + knowledge; assert the assembled block contains all three
+and the LLM is given only that data; empty-section handling. Manual: `briefing` produces a grounded day
+summary. ruff clean.
+**Files:** `briefing.py`, `cli.py`, `__main__.py`, `tests/test_briefing.py`. **Scope:** M.
+**Commit:** `feat(briefing): on-demand daily briefing (calendar + goals + knowledge digest)`
+
+### Checkpoint: Phase 2 complete
+- [ ] All DoD criteria met; signals logging since slice 1a; memory/goals/calendar/briefing work;
+  `selftest` PASS; offline green; integration gated on OAuth. Proceed `/test` -> `/review` ->
+  `/code-simplify` -> `/ship`.
 
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| External API drift (endpoints/auth change) | High likelihood / Med | Source-driven verify at the START of each slice; connectors isolate blast radius to one file |
-| Finnhub/GNews need keys / free-tier limits | Med | HN keyless proves the path; graceful no-key (empty + note); cache respects rate limits |
-| Router picks wrong/no connector | Med | `format="json"` + validate against known names + none-match labeled-chat fallback; fetch is deterministic |
-| Grounding leakage (model adds memory) | Med/High | Strict answerer prompt; tests assert empty -> "couldn't find"; data block built deterministically |
-| Secret leakage (keys in logs/errors/cache keys) | Med | Keys only from env; redact from errors; cache key = connector+query, never the key; `.env` git-ignored |
-| Windows/SQLite cache file handling | Low | Single-process Phase 1; cache is its own sqlite file; reuse Phase 0 path patterns |
+| Calendar OAuth balloons and starves the phase | High | Read-first (3a) feeds the briefing; write (3b) is a SEPARATE deferrable slice; ship read-only if needed |
+| OAuth secrets leak (credentials.json/token) | High | Both in `./data/` git-ignored; boundary guard confines google libs to calendar/; redact from logs; consent screen TESTING + own account |
+| Notes migration loses/orphans data | Med | Migration test asserts every existing note becomes a MemoryRecord; run before retiring the table |
+| Chroma cosine/upsert behaves unexpectedly | Med | Source-driven verify cosine space + upsert before coding 1b |
+| Google Calendar API drift | Med | Source-driven verify events.list/insert + OAuth flow at the start of 3a/3b |
+| Signal capture slows/breaks a turn | Med | Cheap synchronous insert wrapped in swallow-on-failure; tested that errors don't propagate |
+| Smuggling Phase 5 in | Med | Explicit-only memory population; NO reflection/user-model/ranking/auto-promotion; deterministic importance |
 
 ## Open Questions
-- None blocking. Exact API endpoints/fields are verified per slice via source-driven-development.
+- None blocking. API specifics verified per slice via source-driven-development. The 3a/3b split is the
+  scope valve; the write decision is made at the post-3a checkpoint.
 
 ## Parallelization
-- Slice 1 must land first (seams + pipeline). Slices 2 and 3 are independent connectors but both touch
-  the pipeline registry, so serialize (2 then 3). Slice 4 is a barrier (needs all connectors).
+- 1a must be first. 1b, 2 are independent of calendar (could parallelize across sessions; both touch
+  cli.py and StructuredStore, so serialize there). 3a before 3b. 4 is a barrier (needs goals + calendar
+  read + Phase 1 knowledge).
