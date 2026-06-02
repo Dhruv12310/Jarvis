@@ -1,8 +1,9 @@
 """Entry point for ``python -m jarvis``.
 
 Usage:
-    python -m jarvis            chat REPL
-    python -m jarvis selftest   run the Phase 0 Definition-of-Done self-test
+    python -m jarvis              chat REPL
+    python -m jarvis selftest     run the Phase 0 Definition-of-Done self-test
+    python -m jarvis calendar-auth  one-time Google Calendar OAuth (read-only)
 """
 
 from __future__ import annotations
@@ -16,6 +17,13 @@ def main() -> int:
         from jarvis.selftest import main as selftest_main
 
         return selftest_main()
+    if args and args[0] == "calendar-auth":
+        from jarvis.calendar.oauth import authorize
+        from jarvis.config import config
+
+        authorize()
+        print(f"authorized; token saved to {config.google_token_path}")
+        return 0
     from jarvis.cli import run
 
     run()

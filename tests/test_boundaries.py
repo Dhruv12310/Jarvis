@@ -4,6 +4,7 @@ These turn the project's invariants into automated tests:
   - raw SQL only in sqlite_store.py and sqlite_cache.py
   - chromadb imported only in chroma_store.py
   - httpx (outbound HTTP) imported only under connectors/
+  - the Google client libs imported only under calendar/
   - connectors do not import one another
   - declared runtime dependencies stay within the approved set
 """
@@ -14,12 +15,23 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
 _JARVIS = _ROOT / "jarvis"
-_APPROVED_RUNTIME_DEPS = {"python-dotenv", "ollama", "chromadb", "httpx"}
+_APPROVED_RUNTIME_DEPS = {
+    "python-dotenv",
+    "ollama",
+    "chromadb",
+    "httpx",
+    "google-api-python-client",
+    "google-auth-oauthlib",
+    "google-auth-httplib2",
+}
 _SQL_ALLOWED = {"sqlite_store.py", "sqlite_cache.py"}
 
 _SQL = re.compile(r"\b(SELECT|INSERT|UPDATE|DELETE|CREATE TABLE|PRAGMA)\b", re.IGNORECASE)
 _CHROMA_IMPORT = re.compile(r"^\s*(import chromadb|from chromadb)", re.MULTILINE)
 _HTTPX_IMPORT = re.compile(r"^\s*(import httpx|from httpx)", re.MULTILINE)
+_GOOGLE_IMPORT = re.compile(
+    r"^\s*(import|from)\s+(google|googleapiclient|google_auth_oauthlib)\b", re.MULTILINE
+)
 
 
 def _py_files_excluding(name: str) -> list[Path]:
@@ -65,6 +77,18 @@ def test_httpx_imported_only_under_connectors():
     ]
 
     assert offenders == [], f"httpx imported outside connectors/: {offenders}"
+
+
+def test_google_libs_imported_only_under_calendar():
+    # The calendar is the first private-data integration; its Google deps stay behind that seam.
+    offenders = [
+        str(path.relative_to(_JARVIS))
+        for path in _JARVIS.rglob("*.py")
+        if path.parent.name != "calendar"
+        and _GOOGLE_IMPORT.search(path.read_text(encoding="utf-8"))
+    ]
+
+    assert offenders == [], f"google libs imported outside calendar/: {offenders}"
 
 
 def test_connectors_do_not_import_each_other():

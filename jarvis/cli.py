@@ -8,6 +8,7 @@ cited summary). When no connector applies it falls back to labeled plain chat. L
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from jarvis.cache.sqlite_cache import SQLiteCache
 from jarvis.config import config
@@ -32,7 +33,8 @@ BANNER = (
     "Jarvis (Phase 2). Ask about markets, AI/business news, or HN/YC and answers come from live\n"
     "sources with citations. General questions fall back to plain chat.\n"
     "Commands:  :note <text>  |  :notes  |  :recall <query>\n"
-    "           :goal add <text>  |  :goals  |  :goal done <id>  |  :signals  |  exit"
+    "           :goal add <text>  |  :goals  |  :goal done <id>\n"
+    "           :cal  |  :signals  |  exit"
 )
 
 # Redact API keys from any error text before it reaches the terminal. Defense in depth: the keyed
@@ -121,6 +123,25 @@ def _answer(text: str, knowledge: Knowledge, orchestrator: Orchestrator) -> dict
     return {"path": "knowledge", "cached": result.cached}
 
 
+def _handle_agenda() -> None:
+    # Imported lazily so the google libs only load when the calendar is actually used.
+    from jarvis.calendar.client import connect, day_bounds
+
+    client = connect()
+    if client is None:
+        print("calendar not connected. Run:  python -m jarvis calendar-auth")
+        return
+    time_min, time_max = day_bounds(datetime.now().astimezone())
+    events = client.list_events(time_min, time_max)
+    if not events:
+        print("(no events today)")
+        return
+    for event in events:
+        when = "all day" if event.all_day else f"{event.start:%H:%M}-{event.end:%H:%M}"
+        location = f"  @ {event.location}" if event.location else ""
+        print(f"  {when}  {event.summary}{location}")
+
+
 def _handle_goal(argument: str, store: StructuredStore) -> None:
     sub, _, rest = argument.partition(" ")
     sub, rest = sub.lower(), rest.strip()
@@ -183,6 +204,8 @@ def _handle_command(
         for goal in goals:
             mark = "x" if goal.status == "done" else " "
             print(f"  [{mark}] #{goal.id}  {goal.description}")
+    elif command in ("cal", "agenda"):
+        _handle_agenda()
     elif command == "signals":
         events = store.get_signals(limit=20)
         if not events:

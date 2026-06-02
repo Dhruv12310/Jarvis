@@ -38,6 +38,18 @@ class Config:
     vector_dir: Path = field(
         default_factory=lambda: Path(os.environ.get("JARVIS_VECTOR_DIR", str(_DATA / "chroma")))
     )
+    # Calendar (Phase 2) OAuth secrets. Both live in ./data/ (git-ignored): the OAuth client
+    # downloaded from Google Cloud, and the user token minted on first `calendar-auth`.
+    google_credentials_path: Path = field(
+        default_factory=lambda: Path(
+            os.environ.get("JARVIS_GOOGLE_CREDENTIALS", str(_DATA / "credentials.json"))
+        )
+    )
+    google_token_path: Path = field(
+        default_factory=lambda: Path(
+            os.environ.get("JARVIS_GOOGLE_TOKEN", str(_DATA / "token.json"))
+        )
+    )
 
     # Phase 1: public-data connectors. An empty key means that connector reports "no key" rather
     # than fetching (it never invents data); the user fills these in .env.

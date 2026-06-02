@@ -12,6 +12,10 @@ dependencies = [
     "ollama>=0.4",
     "chromadb>=0.5",
     "httpx>=0.27",
+    # Calendar (Phase 2): the 3 official Google libs, confined to jarvis/calendar/ (boundary-guarded).
+    "google-api-python-client>=2.0",
+    "google-auth-oauthlib>=1.0",
+    "google-auth-httplib2>=0.2",
 ]
 
 [project.optional-dependencies]
