@@ -7,6 +7,7 @@ import pytest
 from jarvis.cli import _answer, _handle_command, _loop
 from jarvis.knowledge.pipeline import Answer
 from jarvis.orchestrator import Orchestrator
+from jarvis.signals.log import SignalLog
 from jarvis.stores.chroma_store import ChromaVectorStore
 from jarvis.stores.sqlite_store import SQLiteStructuredStore
 
@@ -170,6 +171,7 @@ def test_loop_survives_a_backend_error_during_a_command(tmp_path, capsys, monkey
         store=store,
         vector=vector,
         embedder=_FailingEmbedder(),
+        signals=SignalLog(store),
     )
 
     out = capsys.readouterr().out
@@ -183,7 +185,7 @@ def test_loop_chat_turn_falls_back_and_prints_reply(tmp_path, capsys, fake_embed
     lines = iter(["hello there", "exit"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
 
-    _loop(orchestrator, _FakeKnowledge(None), store, vector, fake_embedder)
+    _loop(orchestrator, _FakeKnowledge(None), store, vector, fake_embedder, SignalLog(store))
 
     assert "jarvis (chat)> echo: hello there" in capsys.readouterr().out
 
@@ -198,9 +200,21 @@ def test_error_output_redacts_api_keys(tmp_path, capsys, fake_embedder, monkeypa
     lines = iter(["a question", "exit"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
 
-    _loop(None, _LeakyKnowledge(), store, vector, fake_embedder)
+    _loop(None, _LeakyKnowledge(), store, vector, fake_embedder, SignalLog(store))
 
     out = capsys.readouterr().out
     assert "SECRET123" not in out
     assert "ABCDEF" not in out
     assert "token=***" in out
+
+
+def test_loop_emits_a_signal_per_turn(tmp_path, fake_embedder, monkeypatch):
+    store, vector = _backends(tmp_path)
+    signals = SignalLog(store, session_id="s")
+    lines = iter([":notes", "exit"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
+
+    _loop(Orchestrator(_EchoLLM()), _FakeKnowledge(None), store, vector, fake_embedder, signals)
+
+    events = store.get_signals()
+    assert any(e.kind == "command" and e.payload.get("command") == "notes" for e in events)

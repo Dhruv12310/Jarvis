@@ -21,15 +21,16 @@ from jarvis.knowledge.router import Router
 from jarvis.llm.client import LLMClient, OllamaClient
 from jarvis.llm.embedder import Embedder, OllamaEmbedder
 from jarvis.orchestrator import Orchestrator
+from jarvis.signals.log import SignalLog
 from jarvis.stores.chroma_store import ChromaVectorStore
 from jarvis.stores.sqlite_store import SQLiteStructuredStore
 from jarvis.stores.structured import StructuredStore
 from jarvis.stores.vector import VectorStore
 
 BANNER = (
-    "Jarvis (Phase 1). Ask about markets, AI/business news, or HN/YC and answers come from live\n"
+    "Jarvis (Phase 2). Ask about markets, AI/business news, or HN/YC and answers come from live\n"
     "sources with citations. General questions fall back to plain chat.\n"
-    "Commands:  :note <text>  |  :notes  |  :recall <query>  |  exit"
+    "Commands:  :note <text>  |  :notes  |  :recall <query>  |  :signals  |  exit"
 )
 
 # Redact API keys from any error text before it reaches the terminal. Defense in depth: the keyed
@@ -61,9 +62,10 @@ def run() -> None:
     store = SQLiteStructuredStore(config.db_path)
     vector = ChromaVectorStore(config.vector_dir)
     embedder = OllamaEmbedder()
+    signals = SignalLog(store)
     print(BANNER)
     try:
-        _loop(orchestrator, knowledge, store, vector, embedder)
+        _loop(orchestrator, knowledge, store, vector, embedder, signals)
     finally:
         store.close()
     print("bye.")
@@ -75,6 +77,7 @@ def _loop(
     store: StructuredStore,
     vector: VectorStore,
     embedder: Embedder,
+    signals: SignalLog,
 ) -> None:
     while True:
         try:
@@ -87,23 +90,30 @@ def _loop(
         if text.lower() in {"exit", "quit"}:
             return
         # One guard covers all paths so a backend failure prints an error and the REPL survives.
+        kind, payload = "query", {}
         try:
             if text.startswith(":"):
+                kind = "command"
+                payload = {"command": text[1:].partition(" ")[0].lower()}
                 _handle_command(text, store, vector, embedder)
             else:
-                _answer(text, knowledge, orchestrator)
+                payload = _answer(text, knowledge, orchestrator)
         except Exception as exc:  # keep the REPL alive if a backend call fails
             print(f"[error] {_redact(str(exc))}")
+            payload = {**payload, "error": type(exc).__name__}
+        # Signal capture (Core Stage 1): every turn is logged, append-only, best-effort.
+        signals.emit(kind, payload)
 
 
-def _answer(text: str, knowledge: Knowledge, orchestrator: Orchestrator) -> None:
+def _answer(text: str, knowledge: Knowledge, orchestrator: Orchestrator) -> dict:
     result = knowledge.ask(text)
     if result is None:
         # No connector applied -> labeled plain chat (clearly the model's own knowledge).
         print(f"jarvis (chat)> {orchestrator.chat(text).strip()}")
-        return
+        return {"path": "chat"}
     marker = " (cached)" if result.cached else ""
     print(f"jarvis{marker}> {result.text}")
+    return {"path": "knowledge", "cached": result.cached}
 
 
 def _handle_command(
@@ -142,5 +152,12 @@ def _handle_command(
             return
         for hit in hits:
             print(f"  #{hit.id}  (d={hit.distance:.3f})  {hit.text}")
+    elif command == "signals":
+        events = store.get_signals(limit=20)
+        if not events:
+            print("(no signals yet)")
+            return
+        for event in events:
+            print(f"  {event.ts:%H:%M:%S}  {event.kind}  {event.payload}")
     else:
         print(f"unknown command: :{command}")

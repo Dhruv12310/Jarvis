@@ -12,6 +12,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 
+from jarvis.signals.event import SignalEvent
+
 
 @dataclass(frozen=True)
 class Note:
@@ -28,3 +30,11 @@ class StructuredStore(ABC):
     @abstractmethod
     def get_notes(self, limit: int = 50) -> list[Note]:
         """Return the most recent notes, newest first."""
+
+    @abstractmethod
+    def save_signal(self, event: SignalEvent) -> None:
+        """Append a signal event to the log (append-only; never updated or deleted)."""
+
+    @abstractmethod
+    def get_signals(self, limit: int = 50) -> list[SignalEvent]:
+        """Return the most recent signal events, newest first."""

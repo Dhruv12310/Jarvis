@@ -5,12 +5,12 @@ Deterministic-first: LLM only phrases. **Signal capture goes in FIRST (non-negot
 
 ---
 
-## [ ] Slice 1a — Signal capture (turn it ON first)  ·  `feat(signals): append-only signal capture on every interaction`
-- [ ] `signals/event.py` `SignalEvent(id, ts, kind, payload, session_id)` (Core §5.4)
-- [ ] `StructuredStore` += `save_signal`/`get_signals`; `signals` append-only table (raw SQL in sqlite_store)
-- [ ] `signals/log.py` `SignalLog.emit` (per-session id; swallow-on-failure, never breaks a turn)
-- [ ] `cli.py` — every turn (question, each `:` command, briefing) emits a SignalEvent; `:signals` inspector
-- [ ] Verify: unit (log grows, shape, forced failure not propagated); manual `:signals`; ruff clean
+## [x] Slice 1a — Signal capture (turn it ON first)  ·  `feat(signals): append-only signal capture on every interaction`
+- [x] `signals/event.py` `SignalEvent(id, ts, kind, payload, session_id)` (Core §5.4)
+- [x] `StructuredStore` += `save_signal`/`get_signals`; `signals` append-only table (raw SQL in sqlite_store)
+- [x] `signals/log.py` `SignalLog.emit` (per-session id; swallow-on-failure, never breaks a turn)
+- [x] `cli.py` — every turn emits a SignalEvent (query/command/error); `:signals` inspector
+- [x] Verify: unit (append/order/persist, swallow-on-failure, loop emits per turn); 105 offline green; ruff clean
 
 ### ▸ Checkpoint: Logging is ON — review before memory
 
