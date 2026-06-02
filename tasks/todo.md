@@ -24,10 +24,10 @@ Deterministic-first: LLM only phrases. **Signal capture goes in FIRST (non-negot
 
 ### ▸ Checkpoint: Memory real
 
-## [ ] Slice 2 — Goals CRUD  ·  `feat(goals): goal/project CRUD via the structured store`
-- [ ] `Goal(id, description, status, progress, priority, deadline, created_at)`; StructuredStore save/get/update_goal; `goals` table
-- [ ] `cli.py` — `:goal add <text>`, `:goals`, `:goal done <id>` (each emits a signal)
-- [ ] Verify: unit (CRUD + persistence); ruff clean
+## [x] Slice 2 — Goals CRUD  ·  `feat(goals): goal/project CRUD via the structured store`
+- [x] `Goal(id, description, status, progress, priority, deadline, created_at)`; StructuredStore save/get/update_goal; `goals` table
+- [x] `cli.py` — `:goal add <text>`, `:goals`, `:goal done <id>` (each emits a signal)
+- [x] Verify: unit (CRUD + persistence + CLI dispatch); 132 green; ruff clean
 
 ## [ ] Slice 3a — Calendar READ (OAuth)  ·  `feat(calendar): read Google Calendar via OAuth (read-only)`   [the risk; read first]
 - [ ] (source-driven) verify Google OAuth InstalledApp flow + Calendar v3 `events.list` + event resource shape
