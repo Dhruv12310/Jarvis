@@ -6,13 +6,13 @@ Tracking list for `/build`. One vertical slice per commit. Full detail in `tasks
 
 ---
 
-## [ ] Slice 1 — Application-service facade  ·  `feat(service): JarvisService facade; refactor CLI onto it (no behavior change)`
-- [ ] `results.py` — `AskResult(text, grounded, cached)`, `AgendaResult(events, connected)`
-- [ ] `service.py` — `JarvisService(*, orchestrator, knowledge, store, memory, signals, source)`: ask/briefing/add_goal/list_goals/complete_goal/agenda/remember/recall; each returns data + emits ONE signal stamped `source`; briefing's best-effort calendar+digest moves here
-- [ ] `cli.py` — refactor onto the facade (`source="cli"`); render results; drop the per-turn emit; behavior unchanged
-- [ ] Verify: `test_service.py` (faked core: result type + one stamped signal per call); `test_cli.py` updated (same observable output); full suite green; ruff clean
+## [x] Slice 1 — Application-service facade  ·  `feat(service): JarvisService facade; refactor CLI onto it (no behavior change)`
+- [x] `results.py` — `AskResult(text, grounded, cached)`, `AgendaResult(events, connected)`
+- [x] `service.py` — `JarvisService(*, orchestrator, knowledge, store, memory, signals, source)`: ask/briefing/add_goal/list_goals/complete_goal/agenda/remember/memories/recall (+ non-emitting recent_signals); each returns data + emits ONE signal stamped `source` (incl. on failure); briefing best-effort calendar+digest moved here
+- [x] `cli.py` — refactored onto the facade (`source="cli"`); renders results; per-turn emit removed; `build_service(source)` shared for GUI/voice; behavior unchanged
+- [x] Verify: `test_service.py` (faked core: result type + one stamped signal per call); `test_cli.py` updated (same observable output); 164 green; ruff clean; CLI smoke-tested
 
-### ▸ Checkpoint: one code path
+### ▸ Checkpoint: one code path — DONE (CLI runs entirely through JarvisService; signals stamped source="cli")
 
 ## [ ] Slice 2 — UI shell over the facade  ·  `feat(ui): desktop GUI shell over the facade (chat + Jarvis feed)`   [Flet — confirmed]
 - [ ] (source-driven) verify current Flet API for the pinned version

@@ -2,6 +2,7 @@
 
 Usage:
     python -m jarvis              chat REPL
+    python -m jarvis ui           desktop GUI (chat + Jarvis feed)
     python -m jarvis selftest     run the Phase 0 Definition-of-Done self-test
     python -m jarvis calendar-auth  one-time Google Calendar OAuth (read-only)
 """
@@ -27,6 +28,17 @@ def main() -> int:
 
         authorize()
         print(f"authorized; token saved to {config.google_token_path}")
+        return 0
+    if args and args[0] == "ui":
+        # Flet stays under jarvis.ui (boundary-guarded); this entry point never imports it directly.
+        from jarvis.cli import build_service
+        from jarvis.ui.app import launch
+
+        service, store = build_service(source="gui")
+        try:
+            launch(service)
+        finally:
+            store.close()
         return 0
     from jarvis.cli import run
 

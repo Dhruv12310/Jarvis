@@ -1,0 +1,29 @@
+"""AppController: maps UI actions to JarvisService calls and posts result cards to the feed.
+
+Pure (no Flet), so every action is unit-tested with a faked service; `ui/app.py` wires Flet widgets
+to these methods. The controller holds NO business logic of its own - it only calls the facade and
+shapes the result into a feed card. Shortcut-button actions (Slice 3) extend this same class.
+"""
+
+from __future__ import annotations
+
+from jarvis.service import JarvisService
+from jarvis.ui.feed import Card, Feed
+
+
+class AppController:
+    def __init__(self, service: JarvisService, feed: Feed) -> None:
+        self._service = service
+        self._feed = feed
+
+    def show_briefing(self) -> None:
+        self._feed.post_card(Card("Daily briefing", self._service.briefing(), "briefing"))
+
+    def ask(self, text: str) -> None:
+        text = text.strip()
+        if not text:
+            return
+        self._feed.post_card(Card("You", text, "chat"))  # echo the question
+        result = self._service.ask(text)
+        title = "Jarvis (cached)" if result.cached else "Jarvis"
+        self._feed.post_card(Card(title, result.text, "answer" if result.grounded else "chat"))

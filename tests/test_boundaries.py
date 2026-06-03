@@ -5,6 +5,7 @@ These turn the project's invariants into automated tests:
   - chromadb imported only in chroma_store.py
   - httpx (outbound HTTP) imported only under connectors/
   - the Google client libs imported only under calendar/
+  - the Flet UI toolkit imported only under ui/
   - connectors do not import one another
   - declared runtime dependencies stay within the approved set
 """
@@ -23,6 +24,7 @@ _APPROVED_RUNTIME_DEPS = {
     "google-api-python-client",
     "google-auth-oauthlib",
     "google-auth-httplib2",
+    "flet",
 }
 _SQL_ALLOWED = {"sqlite_store.py", "sqlite_cache.py"}
 
@@ -34,6 +36,7 @@ _HTTPX_IMPORT = re.compile(r"^\s*(import httpx|from httpx)", re.MULTILINE)
 # google\w* (not \bgoogle\b) so underscore packages like google_auth_httplib2 are also caught -
 # a \b between "google" and "_" would let that approved dep be imported anywhere undetected.
 _GOOGLE_IMPORT = re.compile(r"^\s*(import|from)\s+google\w*", re.MULTILINE)
+_FLET_IMPORT = re.compile(r"^\s*(import|from)\s+flet\b", re.MULTILINE)
 
 
 def _py_files_excluding(name: str) -> list[Path]:
@@ -103,6 +106,17 @@ def test_google_guard_catches_underscore_packages():
         "import google_auth_httplib2",
     ):
         assert _GOOGLE_IMPORT.search(line), f"guard failed to flag: {line!r}"
+
+
+def test_flet_imported_only_under_ui():
+    # The UI toolkit stays behind the ui/ seam so it is swappable (and front-ends stay thin).
+    offenders = [
+        str(path.relative_to(_JARVIS))
+        for path in _JARVIS.rglob("*.py")
+        if path.parent.name != "ui" and _FLET_IMPORT.search(path.read_text(encoding="utf-8"))
+    ]
+
+    assert offenders == [], f"flet imported outside ui/: {offenders}"
 
 
 def test_connectors_do_not_import_each_other():
