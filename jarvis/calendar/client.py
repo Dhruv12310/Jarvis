@@ -76,5 +76,9 @@ def _to_event(item: dict) -> CalendarEvent:
 
 
 def _parse_when(when: dict) -> datetime:
-    # All-day events carry "date" (YYYY-MM-DD); timed events carry RFC3339 "dateTime".
-    return datetime.fromisoformat(when.get("dateTime") or when["date"])
+    # Timed events carry RFC3339 "dateTime" (already tz-aware). All-day events carry "date"
+    # (YYYY-MM-DD); attach the local tz so all-day and timed events are both aware and never mix
+    # naive/aware datetimes in later arithmetic.
+    if "dateTime" in when:
+        return datetime.fromisoformat(when["dateTime"])
+    return datetime.fromisoformat(when["date"]).astimezone()

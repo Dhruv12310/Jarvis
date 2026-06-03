@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -124,16 +125,17 @@ class SQLiteStructuredStore(StructuredStore):
         row = self._conn.execute("SELECT * FROM goals WHERE id = ?", (goal_id,)).fetchone()
         if row is None:
             raise LookupError(f"no goal #{goal_id}")
-        new_status = status if status is not None else row["status"]
-        new_progress = progress if progress is not None else row["progress"]
+        updated = replace(
+            self._row_to_goal(row),
+            status=status if status is not None else row["status"],
+            progress=progress if progress is not None else row["progress"],
+        )
         self._conn.execute(
             "UPDATE goals SET status = ?, progress = ? WHERE id = ?",
-            (new_status, new_progress, goal_id),
+            (updated.status, updated.progress, goal_id),
         )
         self._conn.commit()
-        return self._row_to_goal(
-            self._conn.execute("SELECT * FROM goals WHERE id = ?", (goal_id,)).fetchone()
-        )
+        return updated
 
     def save_signal(self, event: SignalEvent) -> None:
         self._conn.execute(

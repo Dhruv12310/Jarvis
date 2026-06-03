@@ -2,7 +2,7 @@
 params, day_bounds date math, and the OAuth guard paths that don't need a live Google token.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -72,7 +72,8 @@ def test_list_events_normalizes_an_all_day_event():
     [event] = CalendarClient(service).list_events("min", "max")
 
     assert event.all_day is True
-    assert event.start == datetime(2026, 6, 1)
+    assert event.start.tzinfo is not None  # normalized to tz-aware (no naive/aware mixing)
+    assert event.start.date() == date(2026, 6, 1)
     assert event.location is None
 
 
