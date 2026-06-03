@@ -6,6 +6,7 @@ These turn the project's invariants into automated tests:
   - httpx (outbound HTTP) imported only under connectors/
   - the Google client libs imported only under calendar/
   - the Flet UI toolkit imported only under ui/
+  - the local voice libs (STT/TTS/audio) imported only under voice/
   - connectors do not import one another
   - declared runtime dependencies stay within the approved set
 """
@@ -25,6 +26,9 @@ _APPROVED_RUNTIME_DEPS = {
     "google-auth-oauthlib",
     "google-auth-httplib2",
     "flet",
+    "faster-whisper",
+    "sounddevice",
+    "numpy",
 }
 _SQL_ALLOWED = {"sqlite_store.py", "sqlite_cache.py"}
 
@@ -37,6 +41,11 @@ _HTTPX_IMPORT = re.compile(r"^\s*(import httpx|from httpx)", re.MULTILINE)
 # a \b between "google" and "_" would let that approved dep be imported anywhere undetected.
 _GOOGLE_IMPORT = re.compile(r"^\s*(import|from)\s+google\w*", re.MULTILINE)
 _FLET_IMPORT = re.compile(r"^\s*(import|from)\s+flet\b", re.MULTILINE)
+# Local audio/voice toolkits stay under voice/ so audio + transcripts never leak elsewhere.
+# numpy is general-purpose and intentionally not restricted.
+_VOICE_IMPORT = re.compile(
+    r"^\s*(import|from)\s+(faster_whisper|sounddevice|piper)\b", re.MULTILINE
+)
 
 
 def _py_files_excluding(name: str) -> list[Path]:
@@ -117,6 +126,17 @@ def test_flet_imported_only_under_ui():
     ]
 
     assert offenders == [], f"flet imported outside ui/: {offenders}"
+
+
+def test_voice_libs_imported_only_under_voice():
+    # Local STT/TTS/audio stay behind the voice/ seam: audio + transcripts never leak elsewhere.
+    offenders = [
+        str(path.relative_to(_JARVIS))
+        for path in _JARVIS.rglob("*.py")
+        if path.parent.name != "voice" and _VOICE_IMPORT.search(path.read_text(encoding="utf-8"))
+    ]
+
+    assert offenders == [], f"voice libs imported outside voice/: {offenders}"
 
 
 def test_connectors_do_not_import_each_other():

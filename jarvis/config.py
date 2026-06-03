@@ -50,6 +50,16 @@ class Config:
             os.environ.get("JARVIS_GOOGLE_TOKEN", str(_DATA / "token.json"))
         )
     )
+    # Voice (Phase 3), local on the Brain. STT auto-downloads from HuggingFace; drop to small/base
+    # for lower latency. TTS points at a Piper voice the user downloads into ./data/ (git-ignored).
+    stt_model: str = field(
+        default_factory=lambda: os.environ.get("JARVIS_STT_MODEL", "large-v3-turbo")
+    )
+    tts_model_path: Path = field(
+        default_factory=lambda: Path(
+            os.environ.get("JARVIS_TTS_MODEL", str(_DATA / "piper" / "en_US-lessac-high.onnx"))
+        )
+    )
 
     # Phase 1: public-data connectors. An empty key means that connector reports "no key" rather
     # than fetching (it never invents data); the user fills these in .env.

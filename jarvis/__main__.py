@@ -3,6 +3,7 @@
 Usage:
     python -m jarvis              chat REPL
     python -m jarvis ui           desktop GUI (chat + Jarvis feed)
+    python -m jarvis voice        push-to-talk voice loop (local STT + TTS)
     python -m jarvis selftest     run the Phase 0 Definition-of-Done self-test
     python -m jarvis calendar-auth  one-time Google Calendar OAuth (read-only)
 """
@@ -37,6 +38,18 @@ def main() -> int:
         service, store = build_service(source="gui")
         try:
             launch(service)
+        finally:
+            store.close()
+        return 0
+    if args and args[0] == "voice":
+        # Voice libs stay under jarvis.voice (boundary-guarded). STT is local; TTS wired in Slice 5.
+        from jarvis.cli import build_service
+        from jarvis.voice.loop import run_voice_loop
+        from jarvis.voice.stt import FasterWhisperSTT
+
+        service, store = build_service(source="voice")
+        try:
+            run_voice_loop(service, FasterWhisperSTT())
         finally:
             store.close()
         return 0
