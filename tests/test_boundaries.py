@@ -140,6 +140,17 @@ def test_voice_libs_imported_only_under_voice():
     assert offenders == [], f"voice libs imported outside voice/: {offenders}"
 
 
+def test_voice_guard_catches_all_three_libs():
+    # Pin the regex itself (not just its current effect): dropping a lib from it must fail a test.
+    for line in (
+        "import faster_whisper",
+        "import sounddevice as sd",
+        "from piper import PiperVoice",
+    ):
+        assert _VOICE_IMPORT.search(line), f"guard failed to flag: {line!r}"
+    assert not _VOICE_IMPORT.search("import numpy as np")  # numpy is intentionally unrestricted
+
+
 def test_connectors_do_not_import_each_other():
     connectors_dir = _JARVIS / "connectors"
     modules = {

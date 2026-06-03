@@ -7,6 +7,7 @@ the CLI and GUI use - voice adds no intelligence, only I/O.
 
 from __future__ import annotations
 
+from jarvis.redact import redact
 from jarvis.service import JarvisService
 from jarvis.voice.stt import SpeechToText
 
@@ -35,5 +36,9 @@ def run_voice_loop(service: JarvisService, stt: SpeechToText, tts=None) -> None:
         except (EOFError, KeyboardInterrupt):
             print()
             return
-        answer = handle_turn(service, stt, record_until_enter(), tts)
-        print("jarvis> " + answer if answer is not None else "(heard nothing)")
+        try:
+            answer = handle_turn(service, stt, record_until_enter(), tts)
+        except Exception as exc:  # one bad turn (e.g. model down) must not end the session
+            print(f"[error] {redact(str(exc))}")
+            continue
+        print(f"jarvis> {answer}" if answer is not None else "(heard nothing)")

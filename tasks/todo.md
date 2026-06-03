@@ -43,5 +43,9 @@ Tracking list for `/build`. One vertical slice per commit. Full detail in `tasks
 - [x] `voice/tts.py` `TextToSpeech` ABC + `PiperTTS` (synthesize + play); loop speaks; `__main__` degrades to text-only if no voice file; `config` TTS path
 - [x] Verify: `test_voice_loop.py` (fake TTS asserts the answer is spoken); `test_tts.py` @integration gated; 180 green; ruff clean
 
-### ▸ Checkpoint: Phase 3 feature-complete (facade + UI + voice) → `/code-simplify` → `/ship` → push → user tests everything → record learnings
-- [ ] **PENDING USER:** manual GUI launch (`python -m jarvis ui`) + voice loop (`python -m jarvis voice`; STT auto-downloads, Piper voice into ./data/piper/)
+### ▸ Checkpoint: Phase 3 feature-complete (facade + UI + voice) — /ship fan-out DONE
+- [x] `/ship` 3-persona review: security GO (trust boundary intact); fixed the real defect (GUI/voice
+  front-ends now guard backend failures -> error card / recovery, shared `redact`, `agenda` degrades
+  like the briefing) + restored CLI render coverage; 194 green, 2 gated skips; ruff clean
+- [x] Phase 3 learnings recorded in docs/DECISIONS.md (D17-D19 deferred)
+- [ ] **PENDING USER:** manual GUI launch (`python -m jarvis ui`) + voice loop (`python -m jarvis voice`; STT auto-downloads; download a Piper voice into ./data/piper/ for TTS, else it runs voice-to-text only)

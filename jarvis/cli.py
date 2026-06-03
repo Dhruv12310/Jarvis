@@ -9,8 +9,6 @@ the daily briefing (:brief), and the :signals inspector.
 
 from __future__ import annotations
 
-import re
-
 from jarvis.cache.sqlite_cache import SQLiteCache
 from jarvis.config import config
 from jarvis.connectors.caching import CachingConnector
@@ -25,6 +23,7 @@ from jarvis.llm.embedder import OllamaEmbedder
 from jarvis.memory.migrate import migrate_notes
 from jarvis.memory.store import MemoryStore
 from jarvis.orchestrator import Orchestrator
+from jarvis.redact import redact
 from jarvis.results import AgendaResult, AskResult
 from jarvis.service import JarvisService
 from jarvis.signals.log import SignalLog
@@ -38,14 +37,6 @@ BANNER = (
     "           :goal add <text>  |  :goals  |  :goal done <id>\n"
     "           :cal  |  :brief  |  :signals  |  exit"
 )
-
-# Redact API keys from any error text before it reaches the terminal. Defense in depth: the keyed
-# connectors return empty on a non-200 rather than raising, but a future change must not leak a key.
-_SECRET_PARAM = re.compile(r"(token|apikey)=[^&\s]+", re.IGNORECASE)
-
-
-def _redact(text: str) -> str:
-    return _SECRET_PARAM.sub(r"\1=***", text)
 
 
 def _build_knowledge(llm: LLMClient) -> Knowledge:
@@ -112,7 +103,7 @@ def _loop(service: JarvisService) -> None:
             else:
                 _render_ask(service.ask(text))
         except Exception as exc:
-            print(f"[error] {_redact(str(exc))}")
+            print(f"[error] {redact(str(exc))}")
 
 
 def _render_ask(result: AskResult) -> None:

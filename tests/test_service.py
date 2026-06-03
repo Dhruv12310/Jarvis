@@ -95,7 +95,35 @@ def test_agenda_reports_not_connected(tmp_path, fake_embedder, monkeypatch):
     result = service.agenda()
 
     assert result == AgendaResult(events=[], connected=False)
-    assert store.get_signals()[0].payload == {"source": "cli", "connected": False}
+    assert store.get_signals()[0].payload == {"source": "cli", "connected": False, "count": 0}
+
+
+def test_agenda_connected_lists_events_and_stamps_count(tmp_path, fake_embedder, monkeypatch):
+    events = [object(), object()]
+
+    class _Client:
+        def list_events(self, *_a, **_k):
+            return events
+
+    monkeypatch.setattr("jarvis.calendar.client.connect", lambda *a, **k: _Client())
+    service, store = _service(tmp_path, fake_embedder)
+
+    result = service.agenda()
+
+    assert result == AgendaResult(events=events, connected=True)
+    assert store.get_signals()[0].payload == {"source": "cli", "connected": True, "count": 2}
+
+
+def test_agenda_degrades_when_calendar_raises(tmp_path, fake_embedder, monkeypatch):
+    def _boom(*_a, **_k):
+        raise RuntimeError("calendar down")
+
+    monkeypatch.setattr("jarvis.calendar.client.connect", _boom)
+    service, store = _service(tmp_path, fake_embedder)
+
+    result = service.agenda()  # must NOT raise - degrades like the briefing does
+
+    assert result == AgendaResult(events=[], connected=False)
 
 
 def test_briefing_phrases_and_emits(tmp_path, fake_embedder, monkeypatch):

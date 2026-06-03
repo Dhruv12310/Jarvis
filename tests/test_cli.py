@@ -3,13 +3,16 @@ REPL resilience. Builds a real service with faked/temp backends so nothing hits 
 Capability logic + signal taxonomy live in test_service.py; here we assert the CLI's rendering.
 """
 
+from datetime import datetime
+from types import SimpleNamespace
+
 import pytest
 
-from jarvis.cli import _handle_command, _loop, _render_ask
+from jarvis.cli import _handle_command, _loop, _render_agenda, _render_ask
 from jarvis.knowledge.pipeline import Answer
 from jarvis.memory.store import MemoryStore
 from jarvis.orchestrator import Orchestrator
-from jarvis.results import AskResult
+from jarvis.results import AgendaResult, AskResult
 from jarvis.service import JarvisService
 from jarvis.signals.log import SignalLog
 from jarvis.stores.chroma_store import ChromaVectorStore
@@ -204,6 +207,53 @@ def test_render_ask_labels_plain_chat(capsys):
     out = capsys.readouterr().out
     assert "(chat)" in out
     assert "chat reply" in out
+
+
+# --- agenda + signals rendering (preserved through the facade refactor) ------
+
+
+def test_render_agenda_not_connected_prints_auth_hint(capsys):
+    _render_agenda(AgendaResult(events=[], connected=False))
+
+    assert "calendar-auth" in capsys.readouterr().out
+
+
+def test_render_agenda_no_events(capsys):
+    _render_agenda(AgendaResult(events=[], connected=True))
+
+    assert "(no events today)" in capsys.readouterr().out
+
+
+def test_render_agenda_formats_an_event_line(capsys):
+    event = SimpleNamespace(
+        summary="Standup",
+        start=datetime(2026, 6, 3, 9, 30),
+        end=datetime(2026, 6, 3, 10, 0),
+        all_day=False,
+        location="Zoom",
+    )
+
+    _render_agenda(AgendaResult(events=[event], connected=True))
+
+    assert "09:30-10:00  Standup  @ Zoom" in capsys.readouterr().out
+
+
+def test_signals_inspector_lists_recent_events(tmp_path, capsys, fake_embedder):
+    service, _store, _memory = _cli(tmp_path, fake_embedder)
+    _handle_command(":note hi", service)
+    capsys.readouterr()
+
+    _handle_command(":signals", service)
+
+    assert "remember" in capsys.readouterr().out  # the :note turn's signal is listed
+
+
+def test_signals_inspector_empty_reports_none(tmp_path, capsys, fake_embedder):
+    service, _store, _memory = _cli(tmp_path, fake_embedder)
+
+    _handle_command(":signals", service)
+
+    assert "(no signals yet)" in capsys.readouterr().out
 
 
 # --- REPL resilience --------------------------------------------------------

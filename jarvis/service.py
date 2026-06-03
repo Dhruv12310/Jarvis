@@ -19,6 +19,7 @@ from jarvis.memory.record import MemoryRecord
 from jarvis.memory.store import MemoryStore
 from jarvis.orchestrator import Orchestrator
 from jarvis.results import AgendaResult, AskResult
+from jarvis.signals.event import SignalEvent
 from jarvis.signals.log import SignalLog
 from jarvis.stores.structured import Goal, StructuredStore
 
@@ -89,17 +90,10 @@ class JarvisService:
 
     def agenda(self) -> AgendaResult:
         with self._signal("agenda") as sig:
-            # Lazy import so the google libs only load when the calendar is actually used.
-            from jarvis.calendar.client import connect, day_bounds
-
-            client = connect()
-            if client is None:
-                sig["connected"] = False
-                return AgendaResult(events=[], connected=False)
-            events = client.list_events(*day_bounds(datetime.now().astimezone()))
-            sig["connected"] = True
+            events, connected = self._calendar_events(datetime.now().astimezone())
+            sig["connected"] = connected
             sig["count"] = len(events)
-            return AgendaResult(events=events, connected=True)
+            return AgendaResult(events=events, connected=connected)
 
     def remember(self, text: str) -> MemoryRecord:
         with self._signal("remember"):
@@ -117,7 +111,7 @@ class JarvisService:
             sig["count"] = len(records)
             return records
 
-    def recent_signals(self, limit: int = 20):
+    def recent_signals(self, limit: int = 20) -> list[SignalEvent]:
         """Read-only inspector over the raw signal log. Does NOT emit (it would self-reference)."""
         return self._store.get_signals(limit=limit)
 
@@ -136,14 +130,23 @@ class JarvisService:
         finally:
             self._signals.emit(kind, data)
 
-    def _brief_events(self, now: datetime) -> list:
+    def _calendar_events(self, now: datetime) -> tuple[list, bool]:
+        """(today's events, connected). A transport/auth failure degrades to ([], False) - agenda
+        and briefing both treat an unreachable calendar as 'no events' rather than raising."""
+        # Lazy import so the google libs only load when the calendar is actually used.
         from jarvis.calendar.client import connect, day_bounds
 
         try:
             client = connect()
-            return client.list_events(*day_bounds(now)) if client is not None else []
+            if client is None:
+                return [], False
+            return client.list_events(*day_bounds(now)), True
         except Exception:
-            return []  # calendar unreachable -> no events section, briefing still renders
+            return [], False
+
+    def _brief_events(self, now: datetime) -> list:
+        events, _connected = self._calendar_events(now)
+        return events
 
     def _brief_digest(self) -> str | None:
         try:

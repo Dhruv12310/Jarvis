@@ -154,3 +154,33 @@ def test_add_goal_ignores_blank():
 
     assert feed.cards == []
     assert service.added_goals == []
+
+
+# --- error handling: a backend failure posts a (redacted) error card, never crashes -----------
+
+
+def test_ask_posts_a_redacted_error_card_when_the_service_raises():
+    class _LeakyService:
+        def ask(self, text):
+            raise RuntimeError("fail for https://x?token=SECRET123")
+
+    controller, feed = _controller(_LeakyService())
+
+    controller.ask("hi")  # must not raise
+
+    error_cards = [card for card in feed.cards if card.kind == "error"]
+    assert error_cards, "a backend failure must post an error card so the feed keeps receiving"
+    assert "SECRET123" not in error_cards[0].body
+    assert "token=***" in error_cards[0].body
+
+
+def test_show_briefing_posts_an_error_card_when_the_service_raises():
+    class _BoomService:
+        def briefing(self):
+            raise RuntimeError("ollama down")
+
+    controller, feed = _controller(_BoomService())
+
+    controller.show_briefing()  # must not raise
+
+    assert [c.kind for c in feed.cards] == ["error"]

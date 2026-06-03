@@ -133,3 +133,44 @@ foundation; revisit if the Heartbeat box runs in a different tz than the user.
 The 3 Google floors (`>=2.0`/`>=1.0`/`>=0.2`) permit old transitive `google-auth`/`cryptography` on a
 fresh resolve, though the installed set is current. Raise floors to validated minimums and add a
 lockfile when CI lands (folds into D6).
+
+## Phase 3 conventions established (carry forward)
+
+- One facade, thin front-ends: `JarvisService` (jarvis/service.py) is the single application-service
+  layer; CLI, GUI, and voice are interchangeable front doors that call it and render only - no business
+  logic in `ui/` or `voice/`. `build_service(source)` is the shared composition; `source` ("cli"|"gui"|
+  "voice") is stamped into every signal so Phase 5's history covers all modalities.
+- Signal capture is centralized in the facade: each capability emits exactly one SignalEvent (incl. on
+  failure, via the `_signal` contextmanager) and payloads stay metadata-only (source/path/count/id/error
+  TYPE) - never query text, goal text, or transcripts.
+- New surfaces sit behind seams, boundary-guarded: Flet only under `ui/`; the local voice libs
+  (`faster_whisper`/`sounddevice`/`piper`) only under `voice/`; heavy libs are imported lazily so the
+  pure logic (feed/controller, loop) unit-tests without models, audio, or a window.
+- Local-only audio: mic audio + transcripts never touch disk or the signal log and have no outbound
+  path; STT/TTS make no network call at inference (model weights are a one-time public-weight fetch).
+- Front-ends must not crash on a backend failure: the CLI's REPL guard, the GUI controller's error
+  card, and the voice loop's per-turn guard all keep the surface alive (and redact via `jarvis/redact.py`).
+- Verified library shapes (Phase 3): Flet 0.85 (`ft.run(main)`, `page.add/update`, Card/ListView/
+  TextField/Button/Markdown); faster-whisper 1.2 (`WhisperModel(...).transcribe(audio) -> (segments,
+  info)`); sounddevice 0.5 (`InputStream`/`rec`/`play`); piper-tts 1.4 (`PiperVoice.load(path)`,
+  `synthesize(text) -> AudioChunk(audio_int16_array, sample_rate)`).
+
+## Phase 3 review/ship notes (deferred)
+
+### D17 - Public-data search connectors transmit the query term (revisit: Phase 5 PII)
+By design, when the local router selects the news/HN connector the user's question (now also voice
+transcripts) is sent verbatim as the search term to GNews/Algolia HN (markets sends only tickers). This
+is the sanctioned public-data egress, gated by the local router returning [] for non-public questions -
+not a private-data leak. For defense-in-depth in Phase 5, gate connector dispatch on a deterministic
+public-data trigger and/or strip PII before `fetch`. Document the one-line exception when ARCHITECTURE.md
+lands so "nothing private leaves" stays precise.
+
+### D18 - Boundary guards are import-name lints, not egress control (extends D14)
+The httpx/google/flet/voice guards enforce "known libs stay in their lane"; they do not stop a non-httpx
+egress (`socket`, `urllib`, `http.client`, `requests`). No such egress exists today. Highest-leverage
+add when hardening: assert those transports don't appear outside `connectors/`.
+
+### D19 - Add a lockfile for the now-large dependency surface (extends D6/D16)
+Phase 3 added flet + the voice stack (ctranslate2, av/ffmpeg, onnxruntime). Floors allow a future
+`pip install` to pull newer (possibly compromised) releases - a reproducibility risk more than a live
+CVE for local use. Commit a hash-pinned `requirements.lock`/`uv.lock` when CI lands.

@@ -3,7 +3,7 @@ Proves the transcript enters the same `service.ask` path and the answer is spoke
 """
 
 from jarvis.results import AskResult
-from jarvis.voice.loop import handle_turn
+from jarvis.voice.loop import handle_turn, run_voice_loop
 
 
 class _FakeSTT:
@@ -59,3 +59,35 @@ def test_handle_turn_ignores_an_empty_transcript():
     assert answer is None
     assert service.asked == []  # nothing heard -> the pipeline is not called
     assert tts.spoken == []
+
+
+def _one_then_eof(monkeypatch):
+    # input() returns one Enter (start a turn) then raises EOFError to exit the loop.
+    calls = iter([""])
+
+    def fake_input(prompt=""):
+        try:
+            return next(calls)
+        except StopIteration as stop:
+            raise EOFError from stop
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    monkeypatch.setattr("jarvis.voice.audio.record_until_enter", lambda: object())
+
+
+def test_run_voice_loop_prints_the_answer_then_exits(monkeypatch, capsys):
+    _one_then_eof(monkeypatch)
+    service = _FakeService(AskResult(text="the answer", grounded=True, cached=False))
+
+    run_voice_loop(service, _FakeSTT("hello"))
+
+    assert "jarvis> the answer" in capsys.readouterr().out
+
+
+def test_run_voice_loop_reports_heard_nothing_on_empty(monkeypatch, capsys):
+    _one_then_eof(monkeypatch)
+    service = _FakeService(AskResult(text="x", grounded=True, cached=False))
+
+    run_voice_loop(service, _FakeSTT("   "))  # empty transcript -> None
+
+    assert "(heard nothing)" in capsys.readouterr().out
