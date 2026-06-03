@@ -30,17 +30,18 @@ Tracking list for `/build`. One vertical slice per commit. Full detail in `tasks
 
 ### ▸ Checkpoint: UI HALF SHIPPABLE — HARD STOP (honoring user) — awaiting visual verify; then proceed to voice OR ship the UI half
 
-## [ ] Slice 4 — STT (push-to-talk)  ·  `feat(voice): push-to-talk STT into the pipeline`
-- [ ] (source-driven) verify faster-whisper `WhisperModel.transcribe` + `large-v3-turbo` + sounddevice capture
-- [ ] pyproject += `faster-whisper`, `sounddevice`, `numpy`; approved deps updated; boundary guard: voice libs only under `voice/`
-- [ ] `voice/stt.py` `SpeechToText` ABC + `FasterWhisperSTT`; `voice/audio.py` push-to-talk recorder; `voice/loop.py` record→stt→`service.ask`→text
-- [ ] `__main__.py` `python -m jarvis voice`; `config` STT model size
-- [ ] Verify: `test_voice_loop.py` (fake STT + faked facade: transcript enters `service.ask`); `test_stt.py` @integration (real model on a fixed WAV, skip if absent); manual
+## [x] Slice 4 — STT (push-to-talk)  ·  `feat(voice): push-to-talk STT into the pipeline`
+- [x] (source-driven) verified faster-whisper 1.2 `WhisperModel.transcribe` + `large-v3-turbo` + sounddevice 0.5
+- [x] pyproject += `faster-whisper`, `sounddevice`, `numpy`; approved deps updated; boundary guard: voice libs only under `voice/`
+- [x] `voice/stt.py` `SpeechToText` ABC + `FasterWhisperSTT` (lazy import); `voice/audio.py` push-to-talk recorder; `voice/loop.py` `handle_turn` record→stt→`service.ask`
+- [x] `__main__.py` `python -m jarvis voice`; `config` STT model size
+- [x] Verify: `test_voice_loop.py` (fake STT + faked facade: transcript enters `service.ask`); `test_stt.py` @integration gated (JARVIS_VOICE_INTEGRATION); 180 green
 
-## [ ] Slice 5 — TTS + full loop  ·  `feat(voice): local TTS; full listen-answer-speak loop`
-- [ ] (source-driven) verify piper invocation + voice model + playback
-- [ ] pyproject += `piper-tts`; approved deps updated; boundary guard: piper only under `voice/`
-- [ ] `voice/tts.py` `TextToSpeech` ABC + `PiperTTS` (synthesize + play); `voice/loop.py` full record→transcribe→`service.ask`→`tts.speak`; `config` TTS voice
-- [ ] Verify: `test_voice_loop.py` (fake TTS asserts the answer is spoken); `test_tts.py` @integration (real piper non-empty audio, skip if absent); manual full loop
+## [x] Slice 5 — TTS + full loop  ·  `feat(voice): local TTS; full listen-answer-speak loop`
+- [x] (source-driven) verified piper-tts 1.4 `synthesize` -> AudioChunk + playback
+- [x] pyproject += `piper-tts`; approved deps updated; boundary guard: piper only under `voice/`
+- [x] `voice/tts.py` `TextToSpeech` ABC + `PiperTTS` (synthesize + play); loop speaks; `__main__` degrades to text-only if no voice file; `config` TTS path
+- [x] Verify: `test_voice_loop.py` (fake TTS asserts the answer is spoken); `test_tts.py` @integration gated; 180 green; ruff clean
 
-### ▸ Checkpoint: Phase 3 complete → `/test` → `/review` → `/code-simplify` → `/ship` → record learnings in docs/DECISIONS.md
+### ▸ Checkpoint: Phase 3 feature-complete (facade + UI + voice) → `/code-simplify` → `/ship` → push → user tests everything → record learnings
+- [ ] **PENDING USER:** manual GUI launch (`python -m jarvis ui`) + voice loop (`python -m jarvis voice`; STT auto-downloads, Piper voice into ./data/piper/)
