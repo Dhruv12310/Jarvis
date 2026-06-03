@@ -40,14 +40,14 @@ Deterministic-first: LLM only phrases. **Signal capture goes in FIRST (non-negot
 
 ### ▸ Checkpoint: Calendar read works — DECISION: proceed to 3b (write) or defer it (pressure-release valve) and go to briefing on read-only
 
-## [ ] Slice 3b — Calendar confirmed-WRITE  ·  `feat(calendar): confirmed event creation`   [DEFERRABLE]
+## [ DEFERRED ] Slice 3b — Calendar confirmed-WRITE  ·  `feat(calendar): confirmed event creation`   [pressure-release valve — shipped read-only, write is a small follow-on]
 - [ ] (source-driven) verify `events.insert` + write scope (re-auth if token lacks write scope)
 - [ ] `create_event`; `:schedule <NL>` -> LLM proposes -> CLI prints -> confirm `y` -> deterministic create (never silent)
 - [ ] Verify: unit (create called ONLY after confirm gate; `n` leaves calendar untouched); manual; ruff clean
 
-## [ ] Slice 4 — Daily briefing  ·  `feat(briefing): on-demand daily briefing (calendar + goals + knowledge digest)`
-- [ ] `briefing.py` — deterministic assemble(today's calendar + active goals + Phase-1 knowledge digest) -> LLM phrases; sourced
-- [ ] `briefing` command (emits signal); empty sections handled
-- [ ] Verify: unit (assembled block has all three; LLM fed only that data; empty handling); manual `briefing`; ruff clean
+## [x] Slice 4 — Daily briefing  ·  `feat(briefing): on-demand daily briefing (calendar + goals + knowledge)`
+- [x] `briefing.py` — deterministic assemble(today's calendar + active goals + Phase-1 knowledge digest) -> LLM phrases; sourced
+- [x] `:brief`/`:briefing` command (emits signal); empty sections handled; UTF-8 stdout hardening
+- [x] Verify: unit (block has all three; LLM fed only that data; empty handling); manual `:brief` live; 147 green; ruff clean
 
-### ▸ Checkpoint: Phase 2 DoD met (signals logging, memory, goals, calendar, briefing) → `/test` → `/review` → `/code-simplify` → `/ship`
+### ▸ Checkpoint: Phase 2 feature-complete (signals, memory, goals, calendar-read, briefing; 3b deferred) → `/test` → `/review` → `/code-simplify` → `/ship`
