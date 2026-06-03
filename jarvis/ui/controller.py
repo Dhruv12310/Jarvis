@@ -10,6 +10,9 @@ from __future__ import annotations
 from jarvis.service import JarvisService
 from jarvis.ui.feed import Card, Feed
 
+# The "Markets/News" shortcut is a preset question through the same grounded ask path.
+_MARKETS_QUERY = "What's happening in markets and tech news today?"
+
 
 class AppController:
     def __init__(self, service: JarvisService, feed: Feed) -> None:
@@ -27,3 +30,31 @@ class AppController:
         result = self._service.ask(text)
         title = "Jarvis (cached)" if result.cached else "Jarvis"
         self._feed.post_card(Card(title, result.text, "answer" if result.grounded else "chat"))
+
+    # --- shortcut-button actions (Slice 3) -------------------------------------------------
+
+    def show_agenda(self) -> None:
+        result = self._service.agenda()
+        if not result.connected:
+            body = "Not connected. Run: python -m jarvis calendar-auth"
+        elif not result.events:
+            body = "No events today."
+        else:
+            body = "\n".join(_event_line(event) for event in result.events)
+        self._feed.post_card(Card("Today's calendar", body, "agenda"))
+
+    def ask_markets_news(self) -> None:
+        self.ask(_MARKETS_QUERY)
+
+    def add_goal(self, text: str) -> None:
+        text = text.strip()
+        if not text:
+            return
+        goal = self._service.add_goal(text)
+        self._feed.post_card(Card("Goal added", f"#{goal.id}  {goal.description}", "goal"))
+
+
+def _event_line(event) -> str:
+    when = "all day" if event.all_day else f"{event.start:%H:%M}-{event.end:%H:%M}"
+    location = f" @ {event.location}" if event.location else ""
+    return f"- {when} {event.summary}{location}"

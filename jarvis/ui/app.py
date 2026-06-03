@@ -49,7 +49,28 @@ def launch(service: JarvisService) -> None:
             field.value = ""
             _render()
 
+        def _action(fn) -> None:  # run a shortcut, then re-render the feed
+            fn()
+            _render()
+
+        def _add_goal() -> None:  # the chat field doubles as the goal text for the shortcut
+            controller.add_goal(field.value)
+            field.value = ""
+            _render()
+
+        shortcuts = ft.Row(
+            [
+                ft.Button("Briefing", on_click=lambda e: _action(controller.show_briefing)),
+                ft.Button("Today's calendar", on_click=lambda e: _action(controller.show_agenda)),
+                ft.Button(
+                    "Markets / News", on_click=lambda e: _action(controller.ask_markets_news)
+                ),
+                ft.Button("Add goal", on_click=lambda e: _add_goal()),
+            ],
+            wrap=True,
+        )
         page.add(
+            shortcuts,
             feed_view,
             ft.Row([field, ft.Button(content=ft.Text("Send"), on_click=lambda e: _send())]),
         )
