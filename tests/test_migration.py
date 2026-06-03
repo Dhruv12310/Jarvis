@@ -61,3 +61,33 @@ def test_migration_on_empty_store_is_a_noop(tmp_path, fake_embedder):
 
     assert migrate_notes(store, memory) == 0
     assert memory.all() == []
+
+
+def test_migration_is_idempotent_after_a_partial_failure(tmp_path, fake_embedder):
+    # An embedder that fails on the 2nd save aborts the first run mid-loop (table not drained).
+    # Because each memory id is derived from the note id, the retry overwrites rather than dupes.
+    store, memory = _backends(tmp_path, fake_embedder)
+    store.save_note("alpha")
+    store.save_note("beta")
+    store.save_note("gamma")
+
+    calls = {"n": 0}
+    real_embed = fake_embedder.embed
+
+    def flaky(text):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("embedder hiccup")
+        return real_embed(text)
+
+    fake_embedder.embed = flaky
+    try:
+        migrate_notes(store, memory)  # crashes partway, notes NOT drained
+    except RuntimeError:
+        pass
+    fake_embedder.embed = real_embed
+
+    migrate_notes(store, memory)  # clean re-run
+
+    assert sorted(r.content for r in memory.all()) == ["alpha", "beta", "gamma"]  # no duplicates
+    assert store.get_notes() == []

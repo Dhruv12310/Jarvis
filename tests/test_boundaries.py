@@ -31,9 +31,9 @@ _SQL_ALLOWED = {"sqlite_store.py", "sqlite_cache.py"}
 _SQL = re.compile(r"\b(SELECT|INSERT|UPDATE|DELETE|CREATE TABLE|PRAGMA)\b")
 _CHROMA_IMPORT = re.compile(r"^\s*(import chromadb|from chromadb)", re.MULTILINE)
 _HTTPX_IMPORT = re.compile(r"^\s*(import httpx|from httpx)", re.MULTILINE)
-_GOOGLE_IMPORT = re.compile(
-    r"^\s*(import|from)\s+(google|googleapiclient|google_auth_oauthlib)\b", re.MULTILINE
-)
+# google\w* (not \bgoogle\b) so underscore packages like google_auth_httplib2 are also caught -
+# a \b between "google" and "_" would let that approved dep be imported anywhere undetected.
+_GOOGLE_IMPORT = re.compile(r"^\s*(import|from)\s+google\w*", re.MULTILINE)
 
 
 def _py_files_excluding(name: str) -> list[Path]:
@@ -91,6 +91,18 @@ def test_google_libs_imported_only_under_calendar():
     ]
 
     assert offenders == [], f"google libs imported outside calendar/: {offenders}"
+
+
+def test_google_guard_catches_underscore_packages():
+    # Regression: a \bgoogle\b pattern would miss these approved underscore deps, so the guard
+    # must match all three official libraries' import forms (incl. google_auth_httplib2).
+    for line in (
+        "import googleapiclient.discovery",
+        "from google.oauth2.credentials import Credentials",
+        "from google_auth_oauthlib.flow import InstalledAppFlow",
+        "import google_auth_httplib2",
+    ):
+        assert _GOOGLE_IMPORT.search(line), f"guard failed to flag: {line!r}"
 
 
 def test_connectors_do_not_import_each_other():

@@ -5,7 +5,7 @@ is fed only that block. Inputs are duck-typed via SimpleNamespace (no calendar/s
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from jarvis.briefing import BriefingData, phrase, to_data_block
+from jarvis.briefing import _PROMPT, BriefingData, phrase, to_data_block
 
 
 def _event(summary, start, end, *, location=None, all_day=False):
@@ -71,6 +71,17 @@ def test_phrase_feeds_only_the_block_to_the_llm():
     # The LLM sees exactly the instruction + assembled block, nothing else.
     assert captured["prompt"].endswith(to_data_block(data))
     assert "ship phase 2" in captured["prompt"]
+
+
+def test_phrase_sends_only_the_block_nothing_else():
+    # Trust boundary: a private detail in the data must reach the model ONLY via the assembled
+    # block, and the prompt must be EXACTLY instruction+block (no extra context smuggled in).
+    data = _data(goals=[SimpleNamespace(description="call Dr. Smith re: biopsy")])
+    captured = {}
+
+    phrase(data, lambda p: captured.setdefault("p", p))
+
+    assert captured["p"] == _PROMPT.format(block=to_data_block(data))
 
 
 def test_phrase_preserves_a_digest_citation_in_the_block():

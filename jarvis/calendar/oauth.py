@@ -61,3 +61,9 @@ def build_service(creds: Credentials):
 def _persist(creds: Credentials, token_path: Path) -> None:
     token_path.parent.mkdir(parents=True, exist_ok=True)
     token_path.write_text(creds.to_json(), encoding="utf-8")
+    # The token holds a long-lived refresh_token; restrict it to the owner. Effective on POSIX
+    # (e.g. the Heartbeat box); a near no-op on Windows ACLs, hence best-effort.
+    try:
+        token_path.chmod(0o600)
+    except OSError:
+        pass

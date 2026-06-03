@@ -125,6 +125,65 @@ def test_load_credentials_returns_none_without_a_token(tmp_path):
     assert oauth.load_credentials(token_path=tmp_path / "token.json") is None
 
 
+class _FakeCreds:
+    def __init__(self, *, valid, expired=False, refresh_token=None, on_refresh=None):
+        self.valid = valid
+        self.expired = expired
+        self.refresh_token = refresh_token
+        self._on_refresh = on_refresh
+
+    def refresh(self, request):
+        self._on_refresh(self)
+
+    def to_json(self):
+        return "REFRESHED"
+
+
+def test_load_credentials_returns_a_valid_token_without_refreshing(tmp_path, monkeypatch):
+    token = tmp_path / "token.json"
+    token.write_text("{}", encoding="utf-8")
+
+    def _no_refresh(_creds):
+        raise AssertionError("a valid token must not be refreshed")
+
+    creds = _FakeCreds(valid=True, on_refresh=_no_refresh)
+    monkeypatch.setattr(oauth.Credentials, "from_authorized_user_file", lambda f, s: creds)
+
+    assert oauth.load_credentials(token_path=token) is creds
+
+
+def test_load_credentials_refreshes_expired_and_repersists(tmp_path, monkeypatch):
+    token = tmp_path / "token.json"
+    token.write_text("OLD", encoding="utf-8")
+
+    def _mark_valid(creds):
+        creds.valid = True
+
+    creds = _FakeCreds(valid=False, expired=True, refresh_token="r", on_refresh=_mark_valid)
+    monkeypatch.setattr(oauth.Credentials, "from_authorized_user_file", lambda f, s: creds)
+    monkeypatch.setattr(oauth, "Request", lambda: object())
+
+    result = oauth.load_credentials(token_path=token)
+
+    assert result is creds
+    assert token.read_text(encoding="utf-8") == "REFRESHED"  # refreshed token written back
+
+
+def test_load_credentials_propagates_a_refresh_failure(tmp_path, monkeypatch):
+    token = tmp_path / "token.json"
+    token.write_text("OLD", encoding="utf-8")
+
+    def _boom(_creds):
+        raise RuntimeError("token revoked")
+
+    creds = _FakeCreds(valid=False, expired=True, refresh_token="r", on_refresh=_boom)
+    monkeypatch.setattr(oauth.Credentials, "from_authorized_user_file", lambda f, s: creds)
+    monkeypatch.setattr(oauth, "Request", lambda: object())
+
+    with pytest.raises(RuntimeError):
+        oauth.load_credentials(token_path=token)
+
+
 def test_authorize_without_credentials_file_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         oauth.authorize(

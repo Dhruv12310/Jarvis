@@ -59,3 +59,7 @@ In the chat REPL:
 The token refreshes itself automatically. To revoke, delete `data\token.json` (and re-run
 `calendar-auth` to reconnect). Widening beyond read-only (event creation) is a separate, later step
 and will require re-authorizing with a broader scope.
+
+> Security note: `data\token.json` holds a long-lived refresh token. Keep the `data\` folder OUT of
+> cloud-synced locations (OneDrive/Dropbox/Google Drive) and off shared machines — anyone who can
+> read that file can access your calendar until you revoke the grant.
