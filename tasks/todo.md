@@ -14,20 +14,21 @@ Tracking list for `/build`. One vertical slice per commit. Full detail in `tasks
 
 ### ▸ Checkpoint: one code path — DONE (CLI runs entirely through JarvisService; signals stamped source="cli")
 
-## [ ] Slice 2 — UI shell over the facade  ·  `feat(ui): desktop GUI shell over the facade (chat + Jarvis feed)`   [Flet — confirmed]
-- [ ] (source-driven) verify current Flet API for the pinned version
-- [ ] pyproject += `flet` (pinned); approved deps updated; boundary guard: flet only under `ui/`
-- [ ] `ui/feed.py` — Card/Feed model + render; `post_card(card)` receive surface (Phase 5 pushes here; no generation)
-- [ ] `ui/app.py` — Flet window: chat view + Jarvis feed; briefing rendered as a card on launch; send → `service.ask`
-- [ ] `__main__.py` — `python -m jarvis ui` (builds `JarvisService(source="gui")`)
-- [ ] Verify: `test_ui_feed.py` (feed/card model + dispatch with faked facade, no Flet launch); manual launch
+## [x] Slice 2 — UI shell over the facade  ·  `feat(ui): desktop GUI shell over the facade (chat + Jarvis feed)`   [Flet — confirmed]
+- [x] (source-driven) verified Flet 0.85.2 API (ft.run, page.add/update, Card/ListView/TextField/Button/Markdown)
+- [x] pyproject += `flet` (pinned <0.90); approved deps updated; boundary guard: flet only under `ui/`
+- [x] `ui/feed.py` — Card/Feed model; `post_card(card)` receive surface (Phase 5 pushes here; no generation)
+- [x] `ui/app.py` — Flet window: scrolling card feed + chat input; briefing as a card on launch; send → `service.ask`
+- [x] `__main__.py` — `python -m jarvis ui` (builds `JarvisService(source="gui")`; never imports flet itself)
+- [x] Verify: `test_ui_feed.py` (feed/controller with faked facade, no Flet launch); widgets smoke-built; 170 green
+- [ ] **PENDING USER:** visual launch (`python -m jarvis ui`) — window + briefing card + chat work
 
-## [ ] Slice 3 — Shortcut buttons  ·  `feat(ui): shortcut buttons for common actions`
-- [ ] Buttons: Briefing / Today's calendar / Markets-News-HN / Add goal → facade calls → results into the feed
-- [ ] Button→action dispatch is a small pure mapping (testable without Flet)
-- [ ] Verify: `test_ui_feed.py` extended (each shortcut → right facade method + posted card); manual
+## [x] Slice 3 — Shortcut buttons  ·  `feat(ui): shortcut buttons for common actions`
+- [x] Buttons: Briefing / Today's calendar / Markets-News / Add goal → facade calls → results into the feed
+- [x] Button→action dispatch is a pure controller mapping (testable without Flet)
+- [x] Verify: `test_ui_feed.py` extended (each shortcut → right facade method + posted card); 176 green
 
-### ▸ Checkpoint: UI HALF SHIPPABLE (pressure-release valve) — proceed to voice OR ship the UI half now
+### ▸ Checkpoint: UI HALF SHIPPABLE — HARD STOP (honoring user) — awaiting visual verify; then proceed to voice OR ship the UI half
 
 ## [ ] Slice 4 — STT (push-to-talk)  ·  `feat(voice): push-to-talk STT into the pipeline`
 - [ ] (source-driven) verify faster-whisper `WhisperModel.transcribe` + `large-v3-turbo` + sounddevice capture
