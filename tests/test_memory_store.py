@@ -29,6 +29,10 @@ class _FakeVector(VectorStore):
     def upsert(self, id, text, embedding, metadata=None):
         self.store[id] = (text, list(embedding), metadata or {})
 
+    def update_metadata(self, id, metadata):
+        text, embedding, _ = self.store[id]  # text + embedding untouched
+        self.store[id] = (text, embedding, metadata)
+
     def query(self, embedding, k=5):
         hits = [
             VectorHit(id=i, text=t, distance=1.0 - _cosine(embedding, e), metadata=m)
@@ -117,6 +121,27 @@ def test_retrieve_bumps_last_accessed(fake_embedder):
 
 def test_empty_store_returns_nothing(fake_embedder):
     assert _memory(fake_embedder).retrieve("anything", k=5) == []
+
+
+def test_retrieve_bumps_without_re_embedding():
+    class _CountingEmbedder:
+        def __init__(self):
+            self.calls = 0
+
+        def embed(self, text):
+            self.calls += 1
+            return [float(len(text)), 1.0]
+
+    embedder = _CountingEmbedder()
+    memory = MemoryStore(_FakeVector(), embedder)
+    memory.save(_record("1", "alpha"))
+    memory.save(_record("2", "alpha"))
+    before = embedder.calls
+
+    memory.retrieve("alpha", k=2)
+
+    # Only the query is embedded; bumping last_accessed_at must not re-embed the two hits.
+    assert embedder.calls == before + 1
 
 
 def test_default_importance_heuristic():

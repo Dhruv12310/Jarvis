@@ -272,6 +272,29 @@ def test_loop_brief_assembles_and_emits_signal(tmp_path, capsys, fake_embedder, 
     )
 
 
+def test_loop_brief_survives_failing_sources(tmp_path, capsys, fake_embedder, monkeypatch):
+    store, memory = _backends(tmp_path, fake_embedder)
+    store.save_goal("resilient goal")
+
+    def boom(*a, **k):
+        raise RuntimeError("calendar down")
+
+    monkeypatch.setattr("jarvis.calendar.client.connect", boom)
+
+    class _FailingKnowledge:
+        def ask(self, question):
+            raise RuntimeError("router down")
+
+    lines = iter([":brief", "exit"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
+
+    _loop(Orchestrator(_EchoLLM()), _FailingKnowledge(), store, memory, SignalLog(store))
+
+    out = capsys.readouterr().out
+    assert "resilient goal" in out  # deterministic goals render despite both sources failing
+    assert "[error]" not in out  # the briefing degraded gracefully, did not blow up
+
+
 def test_loop_emits_a_signal_per_turn(tmp_path, fake_embedder, monkeypatch):
     store, memory = _backends(tmp_path, fake_embedder)
     signals = SignalLog(store, session_id="s")

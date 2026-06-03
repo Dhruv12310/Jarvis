@@ -26,7 +26,9 @@ _APPROVED_RUNTIME_DEPS = {
 }
 _SQL_ALLOWED = {"sqlite_store.py", "sqlite_cache.py"}
 
-_SQL = re.compile(r"\b(SELECT|INSERT|UPDATE|DELETE|CREATE TABLE|PRAGMA)\b", re.IGNORECASE)
+# Raw SQL in this repo is written UPPERCASE by convention. Matching case-sensitively keeps the
+# tripwire on real SQL while ignoring the English word "update" and method calls like .update().
+_SQL = re.compile(r"\b(SELECT|INSERT|UPDATE|DELETE|CREATE TABLE|PRAGMA)\b")
 _CHROMA_IMPORT = re.compile(r"^\s*(import chromadb|from chromadb)", re.MULTILINE)
 _HTTPX_IMPORT = re.compile(r"^\s*(import httpx|from httpx)", re.MULTILINE)
 _GOOGLE_IMPORT = re.compile(

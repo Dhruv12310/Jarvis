@@ -34,7 +34,14 @@ class VectorStore(ABC):
     def upsert(
         self, id: str, text: str, embedding: Sequence[float], metadata: dict | None = None
     ) -> None:
-        """Add or replace the item under ``id`` (used to refresh a memory, e.g. last_accessed)."""
+        """Add or replace the item under ``id`` (full write, including the embedding)."""
+
+    @abstractmethod
+    def update_metadata(self, id: str, metadata: dict) -> None:
+        """Update only the metadata under ``id``, leaving text + embedding untouched.
+
+        Used to bump a memory's last_accessed_at on retrieval without re-embedding its content.
+        """
 
     @abstractmethod
     def list_all(self, limit: int = 50) -> list[VectorHit]:

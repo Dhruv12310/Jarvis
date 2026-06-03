@@ -51,6 +51,10 @@ class ChromaVectorStore(VectorStore):
             metadatas=[metadata] if metadata else None,
         )
 
+    def update_metadata(self, id: str, metadata: dict) -> None:
+        # embeddings/documents default to None -> only the metadata is rewritten (no re-embed).
+        self._collection.update(ids=[id], metadatas=[metadata])
+
     def query(self, embedding: Sequence[float], k: int = 5) -> list[VectorHit]:
         result = self._collection.query(query_embeddings=[list(embedding)], n_results=k)
         return self._to_hits(result)

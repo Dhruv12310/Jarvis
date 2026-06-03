@@ -138,17 +138,32 @@ _DIGEST_QUERY = "What are today's top market and tech news headlines?"
 
 def _handle_brief(store: StructuredStore, knowledge: Knowledge, orchestrator: Orchestrator) -> None:
     now = datetime.now().astimezone()
-    # Calendar is read-only and optional: if not authorized, the briefing simply has no events.
-    from jarvis.calendar.client import connect, day_bounds
-
-    client = connect()
-    events = client.list_events(*day_bounds(now)) if client is not None else []
+    # The two non-deterministic sources (calendar = network/token, digest = router LLM + connectors)
+    # are best-effort: a failure degrades that section to empty rather than killing the briefing.
+    # Goals are local + deterministic, so they always render.
     goals = store.get_goals(status="active")
-    answer = knowledge.ask(_DIGEST_QUERY)
     data = BriefingData(
-        when=now, events=events, goals=goals, digest=answer.text if answer else None
+        when=now, events=_brief_events(now), goals=goals, digest=_brief_digest(knowledge)
     )
     print(phrase(data, orchestrator.chat))
+
+
+def _brief_events(now: datetime) -> list:
+    from jarvis.calendar.client import connect, day_bounds
+
+    try:
+        client = connect()
+        return client.list_events(*day_bounds(now)) if client is not None else []
+    except Exception:
+        return []  # calendar unreachable -> no events section, briefing still renders
+
+
+def _brief_digest(knowledge: Knowledge) -> str | None:
+    try:
+        answer = knowledge.ask(_DIGEST_QUERY)
+        return answer.text if answer else None
+    except Exception:
+        return None  # digest unavailable -> empty section, briefing still renders
 
 
 def _handle_agenda() -> None:

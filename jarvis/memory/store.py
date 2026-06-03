@@ -81,7 +81,8 @@ class MemoryStore:
         results = []
         for hit, *_ in ranked[:k]:
             record = replace(_to_record(hit), last_accessed_at=now)  # bump on retrieval
-            self.save(record)
+            # Metadata-only update: refresh last_accessed_at without re-embedding the content.
+            self._vector.update_metadata(record.id, _to_metadata(record))
             results.append(record)
         return results
 
