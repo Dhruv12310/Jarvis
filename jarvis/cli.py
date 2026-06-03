@@ -2,7 +2,8 @@
 
 Free-text questions go through the knowledge pipeline (route -> deterministic fetch -> grounded,
 cited summary). When no connector applies it falls back to labeled plain chat. Lines starting with
-``:`` are store commands: :note/:notes/:recall (now backed by the memory store) and :signals.
+``:`` are commands: memory (:note/:notes/:recall), goals (:goal/:goals), calendar (:cal),
+the daily briefing (:brief), and the :signals inspector.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
+from jarvis.briefing import BriefingData, phrase
 from jarvis.cache.sqlite_cache import SQLiteCache
 from jarvis.config import config
 from jarvis.connectors.caching import CachingConnector
@@ -34,7 +36,7 @@ BANNER = (
     "sources with citations. General questions fall back to plain chat.\n"
     "Commands:  :note <text>  |  :notes  |  :recall <query>\n"
     "           :goal add <text>  |  :goals  |  :goal done <id>\n"
-    "           :cal  |  :signals  |  exit"
+    "           :cal  |  :brief  |  :signals  |  exit"
 )
 
 # Redact API keys from any error text before it reaches the terminal. Defense in depth: the keyed
@@ -101,8 +103,14 @@ def _loop(
         try:
             if text.startswith(":"):
                 kind = "command"
-                payload = {"command": text[1:].partition(" ")[0].lower()}
-                _handle_command(text, store, memory)
+                command = text[1:].partition(" ")[0].lower()
+                payload = {"command": command}
+                # Briefing needs knowledge + the LLM, which live here in the loop, not in
+                # _handle_command (whose commands only touch the stores).
+                if command in ("brief", "briefing"):
+                    _handle_brief(store, knowledge, orchestrator)
+                else:
+                    _handle_command(text, store, memory)
             else:
                 payload = _answer(text, knowledge, orchestrator)
         except Exception as exc:  # keep the REPL alive if a backend call fails
@@ -121,6 +129,26 @@ def _answer(text: str, knowledge: Knowledge, orchestrator: Orchestrator) -> dict
     marker = " (cached)" if result.cached else ""
     print(f"jarvis{marker}> {result.text}")
     return {"path": "knowledge", "cached": result.cached}
+
+
+# What the briefing pulls from the Phase-1 knowledge pipeline. Fixed for Phase 2; goal-derived
+# digests are a later refinement.
+_DIGEST_QUERY = "What are today's top market and tech news headlines?"
+
+
+def _handle_brief(store: StructuredStore, knowledge: Knowledge, orchestrator: Orchestrator) -> None:
+    now = datetime.now().astimezone()
+    # Calendar is read-only and optional: if not authorized, the briefing simply has no events.
+    from jarvis.calendar.client import connect, day_bounds
+
+    client = connect()
+    events = client.list_events(*day_bounds(now)) if client is not None else []
+    goals = store.get_goals(status="active")
+    answer = knowledge.ask(_DIGEST_QUERY)
+    data = BriefingData(
+        when=now, events=events, goals=goals, digest=answer.text if answer else None
+    )
+    print(phrase(data, orchestrator.chat))
 
 
 def _handle_agenda() -> None:

@@ -12,6 +12,10 @@ import sys
 
 
 def main() -> int:
+    # The local model freely emits emoji/Unicode; force UTF-8 so a Windows cp1252 console can't
+    # raise UnicodeEncodeError mid-print (e.g. on a briefing). No-op where stdout already copes.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     args = sys.argv[1:]
     if args and args[0] == "selftest":
         from jarvis.selftest import main as selftest_main

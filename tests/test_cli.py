@@ -252,6 +252,26 @@ def test_error_output_redacts_api_keys(tmp_path, capsys, fake_embedder, monkeypa
     assert "token=***" in out
 
 
+def test_loop_brief_assembles_and_emits_signal(tmp_path, capsys, fake_embedder, monkeypatch):
+    store, memory = _backends(tmp_path, fake_embedder)
+    store.save_goal("ship phase 2")
+    # No live calendar in the test: connect() returns None, so the briefing has no events.
+    monkeypatch.setattr("jarvis.calendar.client.connect", lambda *a, **k: None)
+    knowledge = _FakeKnowledge(Answer(text="markets up [1]", cached=False))
+    signals = SignalLog(store, session_id="s")
+    lines = iter([":brief", "exit"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(lines))
+
+    _loop(Orchestrator(_EchoLLM()), knowledge, store, memory, signals)
+
+    out = capsys.readouterr().out
+    assert "ship phase 2" in out  # active goal reached the data block the LLM phrased
+    assert "markets up [1]" in out  # digest (with citation) reached the block
+    assert any(
+        e.kind == "command" and e.payload.get("command") == "brief" for e in store.get_signals()
+    )
+
+
 def test_loop_emits_a_signal_per_turn(tmp_path, fake_embedder, monkeypatch):
     store, memory = _backends(tmp_path, fake_embedder)
     signals = SignalLog(store, session_id="s")
