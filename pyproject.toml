@@ -18,10 +18,11 @@ dependencies = [
     "google-auth-httplib2>=0.2",
     # UI (Phase 3): Flet desktop GUI, confined to jarvis/ui/ (boundary-guarded). Pinned <0.90 (pre-1.0).
     "flet>=0.85,<0.90",
-    # Voice (Phase 3): local STT + mic capture, confined to jarvis/voice/ (boundary-guarded).
+    # Voice (Phase 3): local STT + mic capture + TTS, confined to jarvis/voice/ (boundary-guarded).
     "faster-whisper>=1.2",
     "sounddevice>=0.5",
     "numpy>=1.26",
+    "piper-tts>=1.2",
 ]
 
 [project.optional-dependencies]

@@ -29,6 +29,7 @@ _APPROVED_RUNTIME_DEPS = {
     "faster-whisper",
     "sounddevice",
     "numpy",
+    "piper-tts",
 }
 _SQL_ALLOWED = {"sqlite_store.py", "sqlite_cache.py"}
 

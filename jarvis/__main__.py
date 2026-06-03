@@ -42,14 +42,22 @@ def main() -> int:
             store.close()
         return 0
     if args and args[0] == "voice":
-        # Voice libs stay under jarvis.voice (boundary-guarded). STT is local; TTS wired in Slice 5.
+        # Voice libs stay under jarvis.voice (boundary-guarded). STT + TTS are local.
         from jarvis.cli import build_service
+        from jarvis.config import config
         from jarvis.voice.loop import run_voice_loop
         from jarvis.voice.stt import FasterWhisperSTT
 
         service, store = build_service(source="voice")
+        tts = None
+        if config.tts_model_path.exists():
+            from jarvis.voice.tts import PiperTTS
+
+            tts = PiperTTS()
+        else:
+            print(f"(no TTS voice at {config.tts_model_path}; running voice-to-text only)")
         try:
-            run_voice_loop(service, FasterWhisperSTT())
+            run_voice_loop(service, FasterWhisperSTT(), tts)
         finally:
             store.close()
         return 0
