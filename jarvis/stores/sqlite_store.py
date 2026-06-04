@@ -95,6 +95,14 @@ CREATE TABLE IF NOT EXISTS reflection_state (
 )
 """
 
+# Materialized user model (Phase 5 §5.3): one row holding the derived parts as JSON; goals are live.
+_USER_MODEL_SCHEMA = """
+CREATE TABLE IF NOT EXISTS user_model (
+    id   INTEGER PRIMARY KEY CHECK (id = 1),
+    data TEXT NOT NULL
+)
+"""
+
 
 class SQLiteStructuredStore(StructuredStore):
     def __init__(self, db_path: Path | str) -> None:
@@ -111,6 +119,7 @@ class SQLiteStructuredStore(StructuredStore):
         self._conn.execute(_BUDGETS_SCHEMA)
         self._conn.execute(_CATEGORY_OVERRIDES_SCHEMA)
         self._conn.execute(_REFLECTION_STATE_SCHEMA)
+        self._conn.execute(_USER_MODEL_SCHEMA)
         self._conn.commit()
 
     def save_note(self, content: str) -> Note:
@@ -326,6 +335,20 @@ class SQLiteStructuredStore(StructuredStore):
             "VALUES (1, ?, ?)",
             (last_seq, last_reflection_at.isoformat()),
         )
+        self._conn.commit()
+
+    def get_user_model(self) -> dict:
+        row = self._conn.execute("SELECT data FROM user_model WHERE id = 1").fetchone()
+        return json.loads(row["data"]) if row else {}
+
+    def save_user_model(self, data: dict) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO user_model (id, data) VALUES (1, ?)", (json.dumps(data),)
+        )
+        self._conn.commit()
+
+    def clear_user_model(self) -> None:
+        self._conn.execute("DELETE FROM user_model")
         self._conn.commit()
 
     def close(self) -> None:

@@ -46,3 +46,7 @@ class VectorStore(ABC):
     @abstractmethod
     def list_all(self, limit: int = 50) -> list[VectorHit]:
         """Return up to ``limit`` stored items (unordered, no distance) for enumeration."""
+
+    @abstractmethod
+    def delete(self, id: str) -> None:
+        """Delete the item under ``id`` (used to forget a memory)."""

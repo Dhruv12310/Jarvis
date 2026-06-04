@@ -277,6 +277,49 @@ def test_reflect_forced_runs_synthesis_and_writes_inferred_memory(tmp_path, fake
     assert "morning" not in str(refl.payload)  # no insight content in the signal log
 
 
+def test_user_model_is_inspectable_with_live_goals(tmp_path, fake_embedder):
+    service, _store = _service(tmp_path, fake_embedder)
+    service.add_goal("learn rust")
+
+    model = service.user_model()
+
+    assert [g.description for g in model.goals] == ["learn rust"]  # goals read live
+
+
+def test_reset_user_model_clears_the_derived_profile(tmp_path, fake_embedder):
+    service, store = _service(tmp_path, fake_embedder)
+    store.save_user_model(
+        {
+            "interests": [
+                {
+                    "topic": "x",
+                    "weight": 0.3,
+                    "confidence": 0.3,
+                    "last_updated": "2026-06-03T09:00:00",
+                }
+            ],
+            "rhythms": [],
+            "preferences": [],
+            "updated_at": None,
+        }
+    )
+    assert service.user_model().interests  # present
+
+    service.reset_user_model()
+
+    assert service.user_model().interests == []
+
+
+def test_forget_deletes_a_memory(tmp_path, fake_embedder):
+    service, _store = _service(tmp_path, fake_embedder)
+    record = service.remember("a private thing")
+    assert service.memories()
+
+    service.forget(record.id)
+
+    assert service.memories() == []
+
+
 def test_recent_signals_is_a_non_emitting_inspector(tmp_path, fake_embedder):
     service, store = _service(tmp_path, fake_embedder)
     service.add_goal("x")  # 1 signal

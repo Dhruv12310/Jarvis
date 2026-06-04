@@ -61,6 +61,10 @@ class MemoryStore:
         """Enumerate stored memories (unordered) for inspection; not a ranked retrieval."""
         return [_to_record(hit) for hit in self._vector.list_all(limit=limit)]
 
+    def forget(self, memory_id: str) -> None:
+        """Delete a memory by id (the user controls their own model)."""
+        self._vector.delete(memory_id)
+
     def retrieve(self, query: str, k: int = 5) -> list[MemoryRecord]:
         hits = self._vector.query(self._embedder.embed(query), k=config.memory_candidate_pool)
         if not hits:

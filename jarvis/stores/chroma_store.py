@@ -55,6 +55,9 @@ class ChromaVectorStore(VectorStore):
         # embeddings/documents default to None -> only the metadata is rewritten (no re-embed).
         self._collection.update(ids=[id], metadatas=[metadata])
 
+    def delete(self, id: str) -> None:
+        self._collection.delete(ids=[id])
+
     def query(self, embedding: Sequence[float], k: int = 5) -> list[VectorHit]:
         result = self._collection.query(query_embeddings=[list(embedding)], n_results=k)
         return self._to_hits(result)

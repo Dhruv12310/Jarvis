@@ -180,6 +180,25 @@ def _handle_budget(argument: str, service: JarvisService) -> None:
         print(f"  {s.category}: {actual} of {limit} ({left} left){flag}")
 
 
+def _render_profile(model) -> None:
+    print(f"user model (updated {model.updated_at or 'never'}):")
+    print("  interests:")
+    for i in model.interests:
+        print(f"    - {i.topic}  (weight {i.weight:.2f}, confidence {i.confidence:.2f})")
+    if not model.interests:
+        print("    (none)")
+    print("  rhythms:")
+    for r in model.rhythms:
+        print(f"    - {r.pattern}  (confidence {r.confidence:.2f})")
+    if not model.rhythms:
+        print("    (none)")
+    print("  active goals:")
+    for g in model.goals:
+        print(f"    - {g.description}")
+    if not model.goals:
+        print("    (none)")
+
+
 def _handle_command(text: str, service: JarvisService) -> None:
     command, _, argument = text[1:].partition(" ")
     command = command.lower()
@@ -247,6 +266,25 @@ def _handle_command(text: str, service: JarvisService) -> None:
         _handle_budget(argument, service)
     elif command == "reflect":
         print(f"reflected: {service.reflect(force=True)} insight(s)")
+    elif command == "profile":
+        if argument.lower() == "reset":
+            service.reset_user_model()
+            print("user model reset")
+            return
+        _render_profile(service.user_model())
+    elif command == "why":
+        reflections = [m for m in service.memories() if m.type == "reflection"]
+        if not reflections:
+            print("(no inferred insights yet; run :reflect)")
+            return
+        for m in reflections:
+            print(f"  [{m.id}] {m.content}  (from: {', '.join(m.links) or '?'})")
+    elif command == "forget":
+        if not argument:
+            print("usage: :forget <memory-id>")
+            return
+        service.forget(argument)
+        print(f"forgotten: {argument}")
     elif command == "signals":
         events = service.recent_signals(limit=20)
         if not events:

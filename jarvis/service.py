@@ -11,6 +11,7 @@ stays in the engines; the LLM is only the existing routing/summarizing/briefing 
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, date, datetime
 
 from jarvis.briefing import BriefingData, phrase
@@ -23,8 +24,10 @@ from jarvis.knowledge.pipeline import Knowledge
 from jarvis.memory.record import MemoryRecord
 from jarvis.memory.store import MemoryStore
 from jarvis.orchestrator import Orchestrator
+from jarvis.proactivity import user_model as um
 from jarvis.proactivity.reflect import reflect as _reflect
 from jarvis.proactivity.trigger import accumulated_fuel, should_reflect
+from jarvis.proactivity.user_model import UserModel
 from jarvis.results import AgendaResult, AskResult
 from jarvis.signals.event import SignalEvent
 from jarvis.signals.log import SignalLog
@@ -193,20 +196,49 @@ class JarvisService:
                 sig["reflected"] = False
                 return 0
             now = datetime.now(UTC)
+            goals = self._store.get_goals(status="active")
             insights = _reflect(
                 signals_since=new_signals,
                 memories=self._memory.all(),
-                goals=self._store.get_goals(status="active"),
+                goals=goals,
                 llm=self._llm,
                 memory_store=self._memory,
                 now=now,
             )
+            # Materialize the user model from insights (deterministic; frequency never amplifies).
+            model = um.from_dict(self._store.get_user_model())
+            for insight in insights:
+                model = um.merge(
+                    model,
+                    insight,
+                    goals,
+                    now=now,
+                    alpha=config.confidence_alpha,
+                    gamma=config.confidence_gamma,
+                )
+            self._store.save_user_model(um.to_dict(model))
             # Advance the baseline only after a persisted, successful reflection.
             self._store.save_reflection_state(self._store.latest_signal_seq(), now)
             sig["reflected"] = True
             sig["insights"] = len(insights)  # metadata only - no insight content in the log
             sig["forced"] = force
             return len(insights)
+
+    def user_model(self) -> UserModel:
+        """The inspectable user model: stored derived parts (reflection) + goals read live."""
+        with self._signal("user_model"):
+            model = um.from_dict(self._store.get_user_model())
+            return replace(model, goals=self._store.get_goals(status="active"))
+
+    def forget(self, memory_id: str) -> None:
+        """Delete a reflection (or any) memory - the user controls their own model."""
+        with self._signal("forget"):
+            self._memory.forget(memory_id)
+
+    def reset_user_model(self) -> None:
+        """Wipe the materialized user model (a user-controlled reset)."""
+        with self._signal("user_model_reset"):
+            self._store.clear_user_model()
 
     def recent_signals(self, limit: int = 20) -> list[SignalEvent]:
         """Read-only inspector over the raw signal log. Does NOT emit (it would self-reference)."""

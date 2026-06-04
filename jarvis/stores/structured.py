@@ -137,3 +137,15 @@ class StructuredStore(ABC):
     @abstractmethod
     def save_reflection_state(self, last_seq: int, last_reflection_at: datetime) -> None:
         """Advance the reflection baseline (only after a persisted, successful reflection)."""
+
+    @abstractmethod
+    def get_user_model(self) -> dict:
+        """Return the materialized user-model derived parts (a JSON dict; {} if none)."""
+
+    @abstractmethod
+    def save_user_model(self, data: dict) -> None:
+        """Persist the materialized user-model derived parts."""
+
+    @abstractmethod
+    def clear_user_model(self) -> None:
+        """Wipe the materialized user model (a user-controlled reset)."""

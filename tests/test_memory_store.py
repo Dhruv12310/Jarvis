@@ -47,6 +47,9 @@ class _FakeVector(VectorStore):
             for i, (t, _e, m) in list(self.store.items())[:limit]
         ]
 
+    def delete(self, id):
+        self.store.pop(id, None)
+
 
 def _record(rec_id, content, *, importance=0.5, last_accessed=None):
     now = datetime.now(UTC)
