@@ -34,6 +34,12 @@ class Goal:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class ReflectionState:
+    last_seq: int  # signal-log seq processed by the last reflection (monotonic baseline)
+    last_reflection_at: datetime | None
+
+
 class StructuredStore(ABC):
     # notes are legacy: Phase 0 stored memories here, Phase 2 migrates them into MemoryRecords
     # (vector store) and retires the table. These three exist only to seed and drain that migration.
@@ -115,3 +121,19 @@ class StructuredStore(ABC):
     @abstractmethod
     def get_signals(self, limit: int = 50) -> list[SignalEvent]:
         """Return the most recent signal events, newest first."""
+
+    @abstractmethod
+    def get_signals_since(self, after_seq: int) -> list[SignalEvent]:
+        """Return signal events with seq > after_seq, oldest first (the reflection window)."""
+
+    @abstractmethod
+    def latest_signal_seq(self) -> int:
+        """Return the highest signal seq (0 if empty) - the reflection baseline target."""
+
+    @abstractmethod
+    def get_reflection_state(self) -> ReflectionState:
+        """Return the reflection baseline (last processed seq + when); seq 0 if never reflected."""
+
+    @abstractmethod
+    def save_reflection_state(self, last_seq: int, last_reflection_at: datetime) -> None:
+        """Advance the reflection baseline (only after a persisted, successful reflection)."""

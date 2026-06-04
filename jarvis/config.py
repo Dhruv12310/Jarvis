@@ -117,6 +117,18 @@ class Config:
         default_factory=lambda: float(os.environ.get("JARVIS_MEMORY_W_REL", "1.0"))
     )
 
+    # Phase 5 proactivity. Reflection fires when accumulated signal FUEL since the last reflection
+    # crosses the threshold (§7.4). Confidence updates: rise = c + alpha*(1-c); decay = c - gamma*c.
+    reflection_threshold: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_REFLECTION_THRESHOLD", "5.0"))
+    )
+    confidence_alpha: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_CONFIDENCE_ALPHA", "0.3"))
+    )
+    confidence_gamma: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_CONFIDENCE_GAMMA", "0.3"))
+    )
+
     def ensure_dirs(self) -> None:
         """Create the data directories on demand. They are git-ignored and never committed."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)

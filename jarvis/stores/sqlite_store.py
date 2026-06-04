@@ -15,7 +15,7 @@ from pathlib import Path
 
 from jarvis.finance.transaction import Account, Budget, Transaction
 from jarvis.signals.event import SignalEvent
-from jarvis.stores.structured import Goal, Note, StructuredStore
+from jarvis.stores.structured import Goal, Note, ReflectionState, StructuredStore
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS notes (
@@ -86,6 +86,15 @@ CREATE TABLE IF NOT EXISTS category_overrides (
 )
 """
 
+# Reflection baseline (Phase 5 §7.4): one row tracking the last signal seq a reflection processed.
+_REFLECTION_STATE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS reflection_state (
+    id                 INTEGER PRIMARY KEY CHECK (id = 1),
+    last_seq           INTEGER NOT NULL,
+    last_reflection_at TEXT
+)
+"""
+
 
 class SQLiteStructuredStore(StructuredStore):
     def __init__(self, db_path: Path | str) -> None:
@@ -101,6 +110,7 @@ class SQLiteStructuredStore(StructuredStore):
         self._conn.execute(_ACCOUNTS_SCHEMA)
         self._conn.execute(_BUDGETS_SCHEMA)
         self._conn.execute(_CATEGORY_OVERRIDES_SCHEMA)
+        self._conn.execute(_REFLECTION_STATE_SCHEMA)
         self._conn.commit()
 
     def save_note(self, content: str) -> Note:
@@ -286,6 +296,37 @@ class SQLiteStructuredStore(StructuredStore):
             (limit,),
         ).fetchall()
         return [self._row_to_signal(row) for row in rows]
+
+    def get_signals_since(self, after_seq: int) -> list[SignalEvent]:
+        rows = self._conn.execute(
+            "SELECT id, ts, kind, payload, session_id FROM signals WHERE seq > ? ORDER BY seq",
+            (after_seq,),
+        ).fetchall()
+        return [self._row_to_signal(row) for row in rows]
+
+    def latest_signal_seq(self) -> int:
+        row = self._conn.execute("SELECT MAX(seq) AS m FROM signals").fetchone()
+        return row["m"] or 0
+
+    def get_reflection_state(self) -> ReflectionState:
+        row = self._conn.execute(
+            "SELECT last_seq, last_reflection_at FROM reflection_state WHERE id = 1"
+        ).fetchone()
+        if row is None:
+            return ReflectionState(last_seq=0, last_reflection_at=None)
+        at = row["last_reflection_at"]
+        return ReflectionState(
+            last_seq=row["last_seq"],
+            last_reflection_at=datetime.fromisoformat(at) if at else None,
+        )
+
+    def save_reflection_state(self, last_seq: int, last_reflection_at: datetime) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO reflection_state (id, last_seq, last_reflection_at) "
+            "VALUES (1, ?, ?)",
+            (last_seq, last_reflection_at.isoformat()),
+        )
+        self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()
