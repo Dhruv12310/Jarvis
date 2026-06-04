@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from jarvis.proactivity import user_model as um
-from jarvis.proactivity.feedback import apply_outcome, reward
+from jarvis.proactivity.feedback import apply_outcome, reward, value_metric
 from jarvis.proactivity.user_model import UserModel
 from jarvis.stores.sqlite_store import SQLiteStructuredStore
 from jarvis.stores.structured import Outcome, Suggestion
@@ -141,3 +141,44 @@ def test_positive_outcome_cannot_amplify_a_non_goal_topic():
 
     crypto = next(i for i in model.interests if i.topic == "crypto")
     assert crypto.weight == 0.0
+
+
+def test_objective_is_usefulness_not_engagement():
+    # THE capstone (§8): an attention outcome (ignored) moves NO weight; explicit value does.
+    sugg = _sugg(topics=["rust"])
+    _, w_ignored = apply_outcome(
+        Outcome("s1", NOW, "ignored"),
+        sugg,
+        UserModel(),
+        {},
+        [_goal()],
+        now=NOW,
+        alpha=_A,
+        gamma=_G,
+        lr=_LR,
+    )
+    _, w_helpful = apply_outcome(
+        Outcome("s1", NOW, "more_like_this"),
+        sugg,
+        UserModel(),
+        {},
+        [_goal()],
+        now=NOW,
+        alpha=_A,
+        gamma=_G,
+        lr=_LR,
+    )
+
+    assert w_ignored == {}  # attention -> no learning whatsoever
+    assert w_helpful and all(v > 1.0 for v in w_helpful.values())  # genuine value -> reinforced
+
+
+def test_value_metric_measures_helpfulness_and_excludes_attention():
+    outcomes = [
+        SimpleNamespace(result="more_like_this"),
+        SimpleNamespace(result="dismissed"),
+        SimpleNamespace(result="ignored"),  # attention - excluded from the denominator
+        SimpleNamespace(result="ignored"),
+    ]
+    assert value_metric(outcomes) == 0.5  # 1 helpful of 2 value-bearing; the 2 ignored don't count
+    assert value_metric([]) == 0.0

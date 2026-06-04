@@ -373,6 +373,12 @@ class JarvisService:
                 self._store.save_feedback_weights(weights)
             return outcome
 
+    def value_report(self) -> dict:
+        """The holdout usefulness metric (§7.5 monitor): is Jarvis actually helping? Read-only -
+        this number is never optimized against, so a gap vs the learned weights flags drift."""
+        outcomes = self._store.get_category_outcomes()
+        return {"helpful_rate": feedback.value_metric(outcomes), "outcomes": len(outcomes)}
+
     def _fetch(self, name: str, term: str) -> list:
         """Fetch a connector's items for a public term; a missing/failing source is empty."""
         connector = self._connectors.get(name)

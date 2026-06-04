@@ -99,6 +99,20 @@ def main() -> int:
         finally:
             store.close()
         return 0
+    if args and args[0] == "schedule":
+        # The always-on Heartbeat pass: reflect-if-due, surface suggestions, deliver the digest.
+        from jarvis.cli import build_service
+        from jarvis.proactivity.scheduler import run
+
+        service, store = build_service(source="cli")
+        print("jarvis scheduler running (Ctrl-C to stop)")
+        try:
+            run(service)
+        except KeyboardInterrupt:
+            print()
+        finally:
+            store.close()
+        return 0
     if args and args[0] == "suggest":
         # Run the proactivity engine once (generate -> rank -> phrase) and print the cards.
         from jarvis.cli import build_service

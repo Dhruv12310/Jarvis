@@ -314,6 +314,10 @@ def _handle_command(text: str, service: JarvisService) -> None:
             print(f"recorded: {result.strip()}")
         except ValueError as exc:
             print(str(exc))
+    elif command == "value":
+        report = service.value_report()
+        pct = f"{report['helpful_rate'] * 100:.0f}%"
+        print(f"usefulness: {pct} helpful across {report['outcomes']} rated suggestion(s)")
     elif command == "reflect":
         print(f"reflected: {service.reflect(force=True)} insight(s)")
     elif command == "profile":

@@ -62,3 +62,18 @@ def apply_outcome(outcome, suggestion, model, weights, goals, *, now, alpha, gam
             model = um.suppress_interest(model, topic, now=now, gamma=gamma * -r)
     weights = update_weights(weights, suggestion.features, r, lr=lr)
     return model, weights
+
+
+def value_metric(category_outcomes) -> float:
+    """The holdout USEFULNESS metric: of the value-bearing outcomes, the share that were explicitly
+    helpful. Observational only - it is NEVER fed back into the weights - so if the learned proxy
+    ever climbs while this does not, that gap is the drift/reward-hacking alarm. Attention is
+    excluded entirely; this measures whether Jarvis is actually helping, not whether it's seen."""
+    valued = [
+        o
+        for o in category_outcomes
+        if o.result in ("more_like_this", "less_like_this", "dismissed")
+    ]
+    if not valued:
+        return 0.0
+    return sum(1 for o in valued if o.result == "more_like_this") / len(valued)

@@ -205,6 +205,11 @@ class Config:
     category_cooldown_cap_days: float = field(
         default_factory=lambda: float(os.environ.get("JARVIS_CATEGORY_COOLDOWN_CAP_DAYS", "30"))
     )
+    # Scheduler (§6/§9): the Heartbeat beat interval and the hour the daily digest/briefing fires.
+    digest_hour: int = field(default_factory=lambda: int(os.environ.get("JARVIS_DIGEST_HOUR", "7")))
+    scheduler_interval_seconds: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_SCHEDULER_INTERVAL", "3600"))
+    )
 
     def ensure_dirs(self) -> None:
         """Create the data directories on demand. They are git-ignored and never committed."""
