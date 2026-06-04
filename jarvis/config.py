@@ -198,6 +198,13 @@ class Config:
     feedback_lr: float = field(
         default_factory=lambda: float(os.environ.get("JARVIS_FEEDBACK_LR", "0.1"))
     )
+    # Explore/exploit (§7.3): per-category dismissal backoff = base * 2^(n-1) days, capped.
+    category_cooldown_base_days: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_CATEGORY_COOLDOWN_BASE_DAYS", "1"))
+    )
+    category_cooldown_cap_days: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_CATEGORY_COOLDOWN_CAP_DAYS", "30"))
+    )
 
     def ensure_dirs(self) -> None:
         """Create the data directories on demand. They are git-ignored and never committed."""

@@ -30,13 +30,18 @@ def _goal(gid=1, *, description="learn rust", priority="high"):
     return SimpleNamespace(id=gid, description=description, priority=priority, status="active")
 
 
-def _state(goals=None, *, now=NOW, interests=(), recent=()):
+def _state(goals=None, *, now=NOW, interests=(), recent=(), cat_outcomes=()):
     return EngineState(
         now=now,
         goals=goals or [],
         user_model=UserModel(interests=list(interests)),
         recent_suggestions=list(recent),
+        category_outcomes=list(cat_outcomes),
     )
+
+
+def _co(category, result, ts=NOW):
+    return SimpleNamespace(category=category, result=result, ts=ts)
 
 
 def test_usefulness_equals_weighted_sum_and_contributions_sum_to_score():
@@ -123,6 +128,34 @@ def test_entity_cooldown_excludes_recently_surfaced():
 
     assert rank.select([cand], _state([], recent=recent)) == []
     assert len(rank.select([cand], _state([]))) == 1  # same candidate surfaces with no cooldown
+
+
+def test_dismissed_category_is_suppressed_by_backoff():
+    cand = _cand(ctype="market_move", entity_key="symbol:NVDA", features={"deadline_hours": 0.0})
+    # 3 consecutive dismissals 1 day ago -> backoff 1*2^2 = 4 days -> still cooling down
+    cat = [_co("market_move", "dismissed", NOW - timedelta(days=1)) for _ in range(3)]
+
+    assert rank.select([cand], _state([], cat_outcomes=cat)) == []
+
+
+def test_bandit_rerank_never_exceeds_the_cap():
+    types = ["goal_nudge", "budget_alert", "followup_due", "free_time", "market_move"]
+    cands = [_cand(ctype=t, entity_key=f"{t}:1", features={"deadline_hours": 0.0}) for t in types]
+    cat = [_co("goal_nudge", "more_like_this") for _ in range(5)]  # multipliers must not add slots
+
+    out = rank.select(cands, _state([], cat_outcomes=cat))
+
+    assert len(out) == config.suggestions_per_window  # volume still structurally bounded
+
+
+def test_bandit_reranks_survivors_by_category_value():
+    proven = _cand(ctype="goal_nudge", entity_key="goal:1", features={"deadline_hours": 0.0})
+    untried = _cand(ctype="market_move", entity_key="symbol:NVDA", features={"deadline_hours": 0.0})
+    cat = [_co("goal_nudge", "more_like_this") for _ in range(6)]  # goal_nudge is proven useful
+
+    out = rank.select([untried, proven], _state([], cat_outcomes=cat))
+
+    assert [s.candidate.type for s in out] == ["goal_nudge", "market_move"]  # proven first
 
 
 def test_dnd_gate_suppresses_all_in_quiet_hours():

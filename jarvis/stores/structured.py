@@ -69,6 +69,15 @@ class Outcome:
 
 
 @dataclass(frozen=True)
+class CategoryOutcome:
+    """An outcome joined to its suggestion's category - the per-category feedback for the bandit."""
+
+    category: str
+    result: str
+    ts: datetime
+
+
+@dataclass(frozen=True)
 class ReflectionState:
     last_seq: int  # signal-log seq processed by the last reflection (monotonic baseline)
     last_reflection_at: datetime | None
@@ -215,6 +224,10 @@ class StructuredStore(ABC):
     @abstractmethod
     def get_outcomes(self, *, since: datetime | None = None) -> list[Outcome]:
         """Return outcomes (optionally only at/after `since`), newest first."""
+
+    @abstractmethod
+    def get_category_outcomes(self) -> list[CategoryOutcome]:
+        """Return outcomes joined to their suggestion's category (for explore/exploit)."""
 
     @abstractmethod
     def get_feedback_weights(self) -> dict:

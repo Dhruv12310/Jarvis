@@ -54,6 +54,9 @@ class EngineState:
     user_model: object = None  # the 5a UserModel the ranker scores against
     recent_suggestions: list = field(default_factory=list)  # for novelty + cooldown + fatigue
     feedback_weights: dict = field(default_factory=dict)  # learned per-feature multipliers (§7.5)
+    category_outcomes: list = field(
+        default_factory=list
+    )  # per-category feedback for the bandit (§7.3)
 
 
 class CandidateGenerator(Protocol):

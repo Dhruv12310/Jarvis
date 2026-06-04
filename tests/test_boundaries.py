@@ -191,6 +191,8 @@ def test_proactivity_deterministic_modules_import_no_llm():
         "generators.py",
         "features.py",
         "rank.py",
+        "feedback.py",
+        "bandit.py",
     ):
         path = _JARVIS / "proactivity" / name
         if not path.exists():

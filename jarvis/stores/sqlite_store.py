@@ -16,6 +16,7 @@ from pathlib import Path
 from jarvis.finance.transaction import Account, Budget, Transaction
 from jarvis.signals.event import SignalEvent
 from jarvis.stores.structured import (
+    CategoryOutcome,
     Goal,
     Note,
     Outcome,
@@ -489,6 +490,20 @@ class SQLiteStructuredStore(StructuredStore):
                 suggestion_id=row["suggestion_id"],
                 ts=datetime.fromisoformat(row["ts"]),
                 result=row["result"],
+            )
+            for row in rows
+        ]
+
+    def get_category_outcomes(self) -> list[CategoryOutcome]:
+        rows = self._conn.execute(
+            "SELECT s.candidate_type AS category, o.result AS result, o.ts AS ts "
+            "FROM outcomes o JOIN suggestions s ON o.suggestion_id = s.id ORDER BY o.ts"
+        ).fetchall()
+        return [
+            CategoryOutcome(
+                category=row["category"],
+                result=row["result"],
+                ts=datetime.fromisoformat(row["ts"]),
             )
             for row in rows
         ]

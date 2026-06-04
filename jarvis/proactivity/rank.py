@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from jarvis.config import config
+from jarvis.proactivity import bandit
 from jarvis.proactivity import features as F
 from jarvis.proactivity.candidate import Candidate
 
@@ -76,7 +77,27 @@ def select(candidates, state) -> list[ScoredCandidate]:
         for s in scored
         if not _in_cooldown(s.candidate.entity_key, state.recent_suggestions, state.now)
     ]
-    scored.sort(key=lambda s: s.score, reverse=True)
+    # Per-category dismissal backoff (§7.3): a chronically-dismissed category is suppressed.
+    cat_outcomes = state.category_outcomes
+    scored = [
+        s
+        for s in scored
+        if not bandit.cooldown_active(
+            s.candidate.type,
+            cat_outcomes,
+            state.now,
+            base_days=config.category_cooldown_base_days,
+            cap_days=config.category_cooldown_cap_days,
+        )
+    ]
+    # Explore/exploit RE-RANK (§7.3): order survivors by base_score * the bandit's per-category
+    # multiplier. This only reorders what already cleared the bar - it never changes whether we
+    # surface or the volume (the structural cap below still bounds it). §8: exploration picks the
+    # slot, not the cap.
+    scored.sort(
+        key=lambda s: s.score * bandit.category_multiplier(s.candidate.type, cat_outcomes),
+        reverse=True,
+    )
 
     # Structural caps (outside the score): per-category, then a global per-window ceiling.
     surfaced = sum(

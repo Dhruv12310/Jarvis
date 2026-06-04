@@ -338,6 +338,7 @@ class JarvisService:
                 since=now - timedelta(hours=lookback)
             ),
             feedback_weights=self._store.get_feedback_weights(),
+            category_outcomes=self._store.get_category_outcomes(),
         )
 
     def record_outcome(self, suggestion_id: str, result: str) -> Outcome:
