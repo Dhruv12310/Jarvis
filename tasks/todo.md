@@ -11,10 +11,11 @@ does I/O. Abstention is the default; the frequency cap is structural.
 
 ---
 
-## [ ] Slice 1 — Candidate model + registry + owned-data generators  ·  `feat(proactivity): candidate generation over owned data (goals, budget, recurring, calendar)`
-- [ ] `proactivity/candidate.py` — `Provenance` + `Candidate` + `CandidateGenerator` Protocol + `GENERATORS` registry + `generate_all` (union + dedup by `entity_key`)
-- [ ] `proactivity/generators.py` — owned generators (pure `(state)->[Candidate]`): `goal_deadline`, `stale_goal` (created_at+progress proxy; no Goal.updated_at), `budget_threshold`, `recurring_bill_due` (next = last_txn + cadence; Recurring has no due date), `event_prep` (next timed event in horizon)
-- [ ] Verify: `test_candidate_generators.py` — each fires + abstains; provenance reason/source_ids non-empty; dedup by entity_key; no facade/HTTP/LLM in generators
+## [x] Slice 1 — Candidate model + registry + owned-data generators  ·  `feat(proactivity): candidate generation over owned data (goals, budget, recurring, calendar)` (cc02a35)
+- [x] `proactivity/candidate.py` — `Provenance` + `Candidate` + `EngineState` + `CandidateGenerator` Protocol
+- [x] `proactivity/generators.py` — owned generators (pure `(state)->[Candidate]`): `goal_deadline`, `stale_goal` (created_at+progress proxy; no Goal.updated_at), `budget_threshold`, `recurring_bill_due` (next = last_txn + cadence; Recurring has no due date), `event_prep` (next timed event in horizon); `GENERATORS` registry + `generate_all` (union + dedup by `entity_key`)
+- [x] `config` — urgency_horizon_hours, stale_goal_days, budget_near_fraction, recurring_horizon_days
+- [x] Verify: `test_candidate_generators.py` (10 tests) — each fires + abstains; provenance reason/source_ids non-empty; dedup by entity_key; purity (no facade/HTTP/LLM imports). 294 passed, ruff clean
 
 ## [ ] Slice 2 — Watchlist + collector generators  ·  `feat(proactivity): user-owned public watchlist and collector candidate generators (market/news/yc)`
 - [ ] `stores` — `Watchlist` CRUD (add/get/remove) + `watchlist(kind,value UNIQUE)` table (raw SQL in sqlite); symbols ∪ `config.market_watchlist` fallback
