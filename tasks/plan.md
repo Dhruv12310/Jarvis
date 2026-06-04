@@ -1,152 +1,141 @@
-# Plan: Jarvis — Phase 4 (Finance)
+# Plan: Jarvis — Phase 5 (Proactivity / Jarvis Core)
 
-Source-of-truth: `SPEC.md` (this phase) + `CLAUDE.md` invariants + `docs/Jarvis_Core_Spec.md` (§4
-deterministic-vs-LLM boundary; §5.2 finance in the StructuredStore). One vertical slice per commit.
-The defining rule: **every financial figure is computed by deterministic Tier-0 code; the LLM only
-classifies a merchant string, parses a question, and phrases a computed result — it never sums a
-number.** Phases 0–3 are shipped (plans in git history).
+Source-of-truth: `SPEC.md` (5a active; 5b/5c north star) + `CLAUDE.md` + `docs/Jarvis_Core_Spec.md`
+(Stages 4–7; §7.2/§7.4/§7.5; §5.3/§5.5; **§8 the objective constraint**). Run as **three sub-phases,
+each its own /spec → /ship cycle**: build + ship **5a**, then spec 5b, then 5c. One vertical slice per
+commit. Phases 0–4 shipped (plans in git history).
+
+**THE law (binds all of 5a–5c):** usefulness, never engagement. Deterministic-first: triggers, context
+assembly, ranking features, confidence + feedback math are CODE; the LLM only synthesizes (grounded) and
+phrases. Everything local; everything inspectable; nothing about my behavior leaves the machine.
 
 ```
-Slice 1   Model + store + import   Transaction/Account (Decimal) + finance store + CSV/OFX import (local)
-        |
-Slice 2   Deterministic engine     spending/balances/trends/recurring/budgets - pure, NO LLM (the proof)
-        |
-Slice 3   Categorization           rules + override store + LLM fallback (merchant string only); corrects
-        |
-Slice 4   Finance Q&A + briefing    LLM parse -> engine compute -> LLM phrase; :spend; briefing line
-        |
-Slice 5   Plaid source              opt-in automation behind the same interface (OQ1: import + Plaid)
+5a  REFLECTION + USER MODEL  (this build — the understanding the ranker will score against)
+    Slice 1  Reflection trigger     §7.4 deterministic accumulation of per-kind signal importance
+    Slice 2  Context + synthesis     deterministic aggregation + memory retrieval -> grounded LLM insights
+    Slice 3  User model              inspectable UserModel; deterministic merge (confidence rise/decay)
+        |  >>> ship 5a, then spec 5b <<<
+5b  ENGINE        candidate triggers (code) -> explainable usefulness ranking (§7.2) -> top-K to the feed
+5c  FEEDBACK      Outcome -> model/ranker update (§7.5) + explore/exploit (§7.3) + scheduler + auto-briefing
 ```
 
-Order: Slice 1 (data in) → Slice 2 (the math) → Slice 3 (labels) → Slice 4 (ask/surface) → Slice 5
-(Plaid, opt-in second source). Slices 1–4 are the local path (the everyday default); the engine (2) is
-the heart and is source-agnostic, so Plaid (5) plugs in without touching it.
+Order: 5a Slice 1 (trigger) → 2 (synthesis) → 3 (user model). Slices 2–3 depend on 1; 3 consumes 2's
+insights. 5b depends on the user model (3); 5c closes the loop on 5b.
 
 Dependency graph:
-- Slice 1 (model+store+import) ← nothing; produces normalized rows.
-- Slice 2 (engine) ← Slice 1 (operates on stored transactions). The boundary guard lands here.
-- Slice 3 (categorize) ← Slice 1 (labels transactions; engine groups by them).
-- Slice 4 (Q&A+briefing) ← Slices 2 + 3 (compute + categorized) + the Phase 3 facade/briefing.
+- Slice 1 (trigger) ← the existing signal log; pure deterministic.
+- Slice 2 (context+synthesis) ← Slice 1 (fires) + the existing MemoryStore/§7.1 + signal log.
+- Slice 3 (user model) ← Slice 2 (insights feed the model) + the Phase-2 goals store.
 
 ---
 
-## Task List
+## Task List — 5a (active)
 
-### Slice 1 — Transaction model + finance store + CSV/OFX import  [local data in]
-**Source-driven first:** verify the current `ofxtools` parse API (`OFXTree().parse` → statement →
-transactions; `TRNAMT`/`DTPOSTED`/`NAME`/`MEMO`, `LEDGERBAL`) and a representative bank CSV shape.
-
+### Slice 1 — Reflection trigger (§7.4, deterministic)  [review-hardened]
 **Acceptance:**
-- [ ] `finance/transaction.py`: frozen `Transaction(id, date, amount: Decimal, merchant, category,
-  account)` + `Account(id, name, type, balance: Decimal)`. Money is **Decimal**, never float.
-- [ ] `finance/sources/base.py`: `TransactionSource` (ABC) `load() -> (list[Transaction], list[Account])`.
-  `csv_source.py` (stdlib csv), `ofx_source.py` (the ONLY `ofxtools` importer). Signs normalized
-  (negative = outflow); `id` = deterministic hash(account, date, amount, merchant).
-- [ ] `stores/structured.py` + `sqlite_store.py`: `save_transactions` (idempotent — dedup on `id`),
-  `get_transactions(start?, end?, category?, account?)`, `save_account`/`get_accounts`. Amount stored as
-  TEXT (exact Decimal). Raw SQL stays in `sqlite_store.py`.
-- [ ] `__main__.py`: `python -m jarvis import <file.csv|file.ofx>` → source.load → save (reports counts).
-- [ ] pyproject += `ofxtools`; approved-deps += `ofxtools`; boundary test: `ofxtools` only under `finance/`.
+- [ ] `proactivity/trigger_weights.py`: per-kind **trigger FUEL** weights (user-value, not attention:
+  goal_done/explicit remember/preference high, routine command low) + an **attention denylist**
+  (`{suggestion_shown, item_dwell, ...}`) where `trigger_fuel(kind)` returns **0.0**. Fuel ≠ feedback reward.
+- [ ] `proactivity/trigger.py`: `accumulated_fuel(signals_since)` + `should_reflect(accumulated, threshold)`;
+  `REFLECTION_THRESHOLD`/fuel weights in `config`.
+- [ ] `stores`: reflection-state get/save (last processed **`seq`** + display `last_reflection_at`) and
+  `get_signals_since(after_seq)` on the `StructuredStore` interface (raw SQL in sqlite). Baseline = seq.
+- [ ] `tests/test_boundaries.py`: proactivity deterministic modules import no LLM.
 
-**Verification:** `test_finance_store.py` (round-trip + idempotent re-import inserts each row once);
-`test_finance_sources.py` (CSV + OFX fixture → Decimal amounts, correct signs, no network). Full suite
-green; `ruff` clean.
-**Files:** `finance/{__init__,transaction}.py`, `finance/sources/{__init__,base,csv_source,ofx_source}.py`,
-`stores/structured.py`, `stores/sqlite_store.py`, `__main__.py`, `pyproject.toml`, tests. **Scope:** L.
-**Commit:** `feat(finance): transaction model + local CSV/OFX import into the structured store`
+**Verification:** `test_reflection_trigger.py` — fuel is deterministic; **denylisted kinds -> 0.0**;
+`accumulated_fuel` sums only signals after the seq baseline; `should_reflect` fires at the threshold;
+baseline advances so consumed signals don't recount. No LLM. `test_proactivity_store.py` — state +
+`get_signals_since` round-trip. **Files:** `proactivity/{__init__,trigger_weights,trigger}.py`,
+`stores/*`, `config.py`, `tests/test_boundaries.py`, tests. **Scope:** M.
+**Commit:** `feat(proactivity): deterministic reflection trigger (§7.4) over the signal log`
 
-### ▸ Checkpoint: real data in, locally
-- [ ] Importing a bank export yields normalized, deduped Decimal transactions in SQLite; nothing left the machine.
-
-### Slice 2 — Deterministic finance engine  [the proof: no LLM on the math path]
+### Slice 2 — Reflection context + grounded synthesis (Stage 4)
+**Source-driven first:** re-confirm the Ollama JSON-schema generation path + `MemoryStore.retrieve` /
+signal-log query shapes.
 **Acceptance:**
-- [ ] `finance/engine.py` (pure; imports **no** LLM): `spending_by_category(txns, start, end)`,
-  `spending_by_period(txns, period)`, `total_spending(txns, start, end)`, `net_worth(accounts)`,
-  `period_over_period(...) -> (delta, pct)`, `recurring_charges(txns)`, `budget_vs_actual(txns, budgets)`.
-  Every return is a `Decimal` (or a struct of Decimals).
-- [ ] `finance/transaction.py` += `Budget(category, limit: Decimal, period)` + `BudgetStatus`/`Recurring`.
-- [ ] `stores`: `save_budget`/`get_budgets` (for slice 4 surfacing; table here).
-- [ ] Boundary test: `engine.py` imports no `llm`/`ollama` (structural proof of the absolute constraint).
+- [ ] `proactivity/context.py`: `build_context(signals_since, memories, goals, *, now)` — **deterministic**:
+  **rhythms/cadence/modality/time-of-day from the signal log** (NOT topics — the log has none) +
+  **interests/preferences grounding from the explicit memories + goals**; takes an **injected `now`** and
+  an **already-retrieved** memory list (offline tests don't touch live Chroma); runs the block through
+  `jarvis/redact.py`; returns the EXACT text the LLM may see.
+- [ ] `proactivity/reflect.py`: `synthesize(context, llm) -> list[Insight]` — JSON-schema-constrained;
+  `Insight{kind: interest|rhythm|preference|observation, content, topic?, weight?, links:[id]}`.
+  `reflect(...)` writes each valid one as `MemoryRecord(type=reflection, source=reflection, links=sources)`.
+  **Grounded iff** links non-empty AND every id resolves to a context record; ungrounded/malformed → dropped;
+  content must be an abstraction (no verbatim source reuse).
+- [ ] `service.reflect()` (trigger-or-force) emits a **metadata-only** signal (counts/forced only);
+  `__main__` `reflect` subcommand. Baseline advances only on a persisted, successful reflection.
 
-**Verification:** `test_finance_engine.py` — every function against **fixture transactions** with the
-**LLM absent**; assert exact Decimal values; reproducibility (same fixtures → identical figures);
-recurring detection on a crafted cadence; budget-vs-actual math. **Files:** `finance/engine.py`,
-`finance/transaction.py`, `stores/*`, `tests/test_finance_engine.py`, `tests/test_boundaries.py`. **Scope:** L.
-**Commit:** `feat(finance): deterministic Tier-0 finance engine (no LLM on the math path)`
+**Verification:** `test_reflection_context.py` — aggregates deterministically with a fixed `now` + injected
+memories; the prompt == instruction + the assembled block, byte-for-byte (grounding, like the briefing test).
+`test_reflect.py` — fake LLM: valid insights → linked `reflection` memories; an ungrounded AND a malformed
+item are dropped; no verbatim source reuse; the reflect signal carries no insight text. Integration-gated live.
+**Files:** `proactivity/{context,reflect}.py`, `service.py`, `__main__.py`, tests. **Scope:** L.
+**Commit:** `feat(proactivity): grounded reflection synthesis over retrieved memories + signal aggregates`
 
-### Slice 3 — Categorization (rules + LLM fallback; correctable)
+### Slice 3 — User model (Stage 5, inspectable + controllable)  [review-hardened]
 **Acceptance:**
-- [ ] `finance/categorize.py`: a fixed category set; deterministic merchant→category rules; an override
-  store lookup. For an UNKNOWN merchant, the LLM classifies the merchant **string** into the set (JSON-
-  constrained, like the router) — never touches an amount. Precedence: override > rule > LLM > uncategorized.
-- [ ] `stores`: `save_category_override(merchant, category)` / `get_category_overrides()`; a `:recat`
-  correction applies the override AND updates stored transactions for that merchant (persists).
-- [ ] Import (slice 1) now categorizes on ingest via this module.
+- [ ] `proactivity/user_model.py`: `UserModel` (§5.3) value objects; a **pure** `confidence_after(current,
+  observation) -> float` (re-confirm `clamp(c+α(1−c))`, contradiction `clamp(c−γc)`; α,γ in config;
+  "contradiction" = suppress_topic / less_like_this / opposite-signed insight on the same key); `merge`
+  delegates to it. **Pure-frequency observations do NOT raise a ranker-facing `Interest.weight`** — only
+  goal-linked/confirmed topics do (else recorded as a descriptive observation). Explicit goal/preference wins.
+- [ ] `stores`: user_model get/save (materialized); **goals are read live from the Phase-2 store only**
+  (reflection never writes a goal); reflection updates the derived parts; reflection records marked inferred.
+- [ ] Control surface: `service.user_model()` / `forget(id)` / `reset_user_model()`; `cli` `:profile` /
+  `:why` (insight provenance) / `:forget` / `:reflect`.
 
-**Verification:** `test_categorize.py` — rule hit; **override beats rule**; unknown → **fake LLM**
-classifies (asserts the LLM saw only the merchant string, no amount); a correction persists and re-
-categorizes. **Files:** `finance/categorize.py`, `stores/*`, `cli.py`, `tests/test_categorize.py`. **Scope:** M.
-**Commit:** `feat(finance): deterministic categorization with an LLM fallback for unknown merchants`
+**Verification:** `test_user_model.py` — `confidence_after` exact values + clamps + monotonic + order-
+independent; same interest twice → up, contradiction → down; **pure frequency yields an observation, not an
+amplifiable interest weight**; explicit goal reflected; reproducible. `:profile`/`:why` inspectable; `:forget`
++ reset work. **Files:** `proactivity/user_model.py`, `proactivity/reflect.py`, `stores/*`, `service.py`,
+`cli.py`, `config.py`, `tests/test_user_model.py`. **Scope:** M.
+**Commit:** `feat(proactivity): inspectable user model materialized by reflection (confidence rise/decay)`
 
-### Slice 4 — Finance Q&A + briefing integration
-**Acceptance:**
-- [ ] `finance/qa.py`: LLM parses the question → `FinanceQuery{metric, category?, period?}` (JSON schema,
-  validated); the **engine** computes from `get_transactions(filtered)`; the LLM **phrases** the exact
-  computed figure (given the number — it does not recompute).
-- [ ] `service.py`: `finance_answer(question) -> str` (emits a metadata-only signal — no amounts).
-  `cli.py`: `:spend <q>` / `:accounts` / `:budget`; a GUI finance shortcut (Phase 3 surface).
-- [ ] Briefing: a deterministic finance line (e.g. month-to-date spend + top category) assembled by the
-  engine, phrased by the LLM, presented as computed-from-my-data.
+### ▸ Checkpoint: 5a complete (Jarvis knows the user)
+- [ ] Reflection runs (trigger/on-demand) → grounded insight memories; an inspectable user model updates
+  from signals/reflections/goals with confidence rise/decay; deterministic + local; LLM only synthesizes,
+  grounded + validated. → `/test` → **multi-lens adversarial review (incl. objective-drift lens)** →
+  `/code-simplify` → `/ship` → record learnings → **then spec 5b**.
 
-**Verification:** `test_finance_qa.py` — with a **fake LLM**, parse→engine→phrase; assert the figure in
-the answer equals the **engine's** output (no model-invented number) and the engine ran with no LLM;
-briefing includes the finance line. **Files:** `finance/qa.py`, `service.py`, `cli.py`, `briefing.py`,
-`tests/test_finance_qa.py`. **Scope:** M.
-**Commit:** `feat(finance): finance Q&A + briefing (engine computes, LLM only phrases)`
+## North star — 5b / 5c (specified, built next as their own cycles)
 
-### ▸ Checkpoint: Phase 4 complete (local import → engine → categorize → ask/brief)
-- [ ] Numbers verifiably from the engine; LLM never on the math path (boundary + unit proof); reads-only,
-  no advice. Proceed `/test` → `/review` → `/code-simplify` → `/ship`, recording learnings to DECISIONS.
+### 5b — Engine (candidate generation + ranking)
+- Deterministic candidate triggers (code): watched-stock move, calendar event approaching, goal deadline
+  near, recurring pattern, project-relevant news, budget threshold → a wide candidate pool (the LLM may
+  phrase a candidate, never invent the trigger).
+- **Explainable usefulness ranking** (§7.2): `β_goal·goal_relevance + β_urgency·urgency +
+  β_interest·interest_match + β_timing·timing_fit + β_novelty·novelty − β_fatigue·fatigue`, hand-weighted
+  linear; surface top‑K (cap ~3/window); each card answers **"why am I seeing this?"** (the feature
+  contributions ARE the explanation). Push `Suggestion` cards to the Phase-3 feed (`post_card`).
 
-### Slice 5 — Plaid source  [OQ1: opt-in automation behind the same interface]
-**Source-driven first:** verify current Plaid sandbox/production tiers, `/transactions/sync`, the
-`plaid-python` client, and the auth/access-token flow against current Plaid docs.
-**Acceptance:**
-- [ ] `finance/sources/plaid_source.py`: `PlaidSource` (the ONLY plaid importer, boundary-guarded) with
-  the same `load() -> (transactions, accounts)` contract — the engine is unchanged. Normalizes Plaid
-  transactions/accounts to the Decimal model (signs correct).
-- [ ] `config`: Plaid `client_id`/`secret`/`access_token` via `.env` (git-ignored, never committed,
-  redacted from errors). `__main__.py`: `import --plaid` (or a `plaid-sync`) path through the source.
-- [ ] pyproject += `plaid-python`; approved-deps += it; boundary guard: `plaid` only under `finance/`.
-- [ ] Docs: a short Plaid setup note (create app, sandbox vs production, obtain an access token).
-
-**Verification:** `test_plaid_source.py` — normalize a **fake Plaid API response** (no network) into the
-Decimal model; an `@integration` test gated on a configured token (skips like OAuth). Live verification
-(`/transactions/sync` against the user's Plaid item) is **PENDING the user's Plaid credentials**.
-**Files:** `finance/sources/plaid_source.py`, `config.py`, `__main__.py`, `pyproject.toml`, docs,
-`tests/test_plaid_source.py`, `tests/test_boundaries.py`. **Scope:** M.
-**Commit:** `feat(finance): Plaid transaction source behind the source interface (opt-in, gated)`
+### 5c — Feedback loop + explore/exploit + scheduler
+- `Outcome` (acted/dismissed/ignored/more|less, §5.5) → **deterministic** §7.5 updates to user-model
+  confidence + ranker β-weights; **measurably shifts** future ranking. `shown`/`dwell` is NEVER a positive
+  reward (the objective is usefulness).
+- **Explore/exploit** (§7.3): ε-exploration of an out-of-profile candidate, ε decays as model confidence
+  rises. Frequency cap + fatigue + an off-switch + tuning (suppress_topic preference).
+- **Scheduler** (Core §9 Heartbeat): run reflection on its threshold + the candidate→rank pass on
+  schedule/events, push to the feed; **auto-fire the daily briefing** (deferred from Phase 2).
+- **A test proves the objective is usefulness, not engagement.**
 
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| LLM computes/estimates a figure (hallucinated money) | Critical (harm) | Engine is pure + imports no LLM (boundary test); Q&A asserts the answer figure == engine output; LLM only parses/phrases |
-| Float money rounding errors | High | `Decimal` everywhere; stored as TEXT; engine sums Decimals; asserted exact in tests |
-| Re-import duplicates transactions | High | Deterministic `id` = hash(account,date,amount,merchant); dedup on conflict; idempotency test |
-| Financial data leaks to logs / a third party | High | Local import (no egress); signals metadata-only (no amounts); redact errors; Plaid (if any) confined + token-gated |
-| OFX/bank-CSV format variance | Med | `ofxtools` (standards-based) for OFX; CSV mapping configurable; fixtures for both; source behind interface |
-| Scope creep into advice / money movement | Med | Hard Never list (reads/tracks only; facts not advice); enforced in phrasing prompts + review |
-| Plaid balloons the phase | Med | Plaid is a DEFERRED optional slice; import-first is the complete local phase |
+| Objective drifts toward engagement/manipulation | CRITICAL (project purpose) | Usefulness-only feedback label; shown/dwell never rewards; explainable ranking; freq-cap; off-switch; a dedicated adversarial review lens |
+| LLM free-associates an ungrounded "insight" | High | Synthesis sees ONLY the deterministic context; insights must link to sources; ungrounded rejected; grounding test |
+| User model becomes an opaque black box | High | Materialized + inspectable (`:profile`); deterministic confidence math; explicit goals/prefs win |
+| Reflection over-fires (spammy/expensive) | Med | Deterministic §7.4 threshold; baseline resets; on-demand for tests; reflection is a Brain job |
+| Behavioral data leaks | High | All local; signal log metadata-only; no cloud; nothing about behavior leaves the machine |
+| Ranker complexity balloons | Med | Hand-weighted linear first (§7.2); ML lib only when labeled outcomes exist (§11); 5b/5c separate cycles |
+| Phase 5 sprawls (it's the biggest phase) | High | Three sub-phases, each spec→ship; 5a (understanding) ships before 5b (acting) |
 
-## Open Questions — RESOLVED with the user
-- **OQ1 (data source)** — **import-first baseline + Plaid this phase** (both, behind one source
-  interface; engine source-agnostic). Import is the local everyday path; Plaid is opt-in automation,
-  confined + token-gated. Plaid's live verification needs the user's Plaid credentials.
-- OQ2 categorization — rules + LLM fallback (classification of the merchant string only). OQ3 budgets —
-  include (deterministic budget-vs-actual). Both confirmed.
+## Open Questions — recommendations (confirm)
+- Reflection-trigger fuel = accumulated per-kind **signal** importance (+ memory importance); threshold +
+  weights in config. User model = materialized row + live goals. Importance = deterministic per-kind
+  heuristic. All recommended; the binding constraint (usefulness-not-engagement) is not negotiable.
 
 ## Parallelization
-- Slice 1 is the barrier (no engine without data). Slices 2 (engine) and 3 (categorize) both depend only
-  on Slice 1 and could parallelize across sessions; both touch the store, so serialize there. Slice 4
-  needs 2 + 3 + the Phase 3 facade/briefing. Slice 5 (Plaid) plugs into the source interface independently.
+- Slice 1 (trigger) is independent (pure). Slices 2–3 serialize (3 consumes 2). 5b waits on the user
+  model (5a/3); 5c closes the loop on 5b. Sub-phases ship in order: 5a → 5b → 5c.
