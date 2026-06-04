@@ -1,0 +1,47 @@
+"""Candidates and the engine state they are generated from (Core Stage 6 - candidate generation).
+
+A Candidate is a thing Jarvis COULD surface, produced deterministically by a generator from an
+injected EngineState snapshot - no I/O lives here. Provenance is the deterministic "why am I seeing
+this?": which generator fired and the source records it resolves to. The ranker (5b/slice 3) scores
+candidates; the engine (slice 4) does all the I/O + phrasing. Generators stay pure and testable.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Protocol
+
+
+@dataclass(frozen=True)
+class Provenance:
+    generator: str  # which generator fired ("goal_deadline", "market_move", ...)
+    reason: str  # deterministic human "why" ("Goal #7 'ship 5b' is due in 2 day(s).")
+    source_ids: list[str]  # ids that resolve to real records ("goal:7", "budget:dining", ...)
+
+
+@dataclass(frozen=True)
+class Candidate:
+    type: str  # candidate_type enum (§5.5): goal_nudge|budget_alert|followup_due|free_time|...
+    entity_key: str  # dedup + cooldown key ("goal:7", "budget:dining", "symbol:NVDA")
+    features: dict  # raw deterministic scalar inputs for the ranker (deadline_hours, days_until)
+    provenance: Provenance
+    payload: dict  # LOCAL data the phraser needs; never a signal/attention field, never logged raw
+
+
+@dataclass(frozen=True)
+class EngineState:
+    """A frozen snapshot the engine gathers ONCE and hands to the pure generators/ranker. Grows in
+    later slices (watchlist + connector items, user model, recent suggestions)."""
+
+    now: datetime
+    goals: list = field(default_factory=list)  # active Goal[]
+    budget_status: list = field(default_factory=list)  # BudgetStatus[]
+    transactions: list = field(default_factory=list)  # Transaction[]
+    events: list = field(default_factory=list)  # CalendarEvent[] (today/upcoming)
+
+
+class CandidateGenerator(Protocol):
+    """A pure (state) -> [Candidate] trigger. No facade, HTTP, LLM, or clock - state is injected."""
+
+    def __call__(self, state: EngineState) -> list[Candidate]: ...

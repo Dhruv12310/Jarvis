@@ -1,34 +1,43 @@
-# Phase 5 — TODO (5a active: Reflection + User Model)
+# Phase 5b — TODO (Proactivity Engine: candidate generation + usefulness ranking)
 
 Tracking list for `/build`. One vertical slice per commit. Full detail in `tasks/plan.md`.
-**THE law: usefulness, never engagement (Core §8).** Deterministic-first — triggers, context, confidence
-+ feedback math are CODE; the LLM only synthesizes (grounded) and phrases. All local; inspectable;
-nothing about my behavior leaves the machine. Run as 5a → 5b → 5c (each its own spec→ship).
-(Phases 0–4 shipped; todos in git history.)
+**THE law: usefulness, never engagement (Core §8).** Deterministic-first — generation, features,
+ranking, selection, and the "why" are CODE; the LLM only phrases. Collector queries use public
+watchlist terms only; nothing private leaves the machine; the signal log stays metadata-only.
+Run as 5a → 5b → 5c (each its own spec→ship). 5a shipped (`d08b03b`). **5c is NOT in this build.**
+
+Design spine: generators + ranker are PURE functions of an injected `EngineState`; only `suggest.py`
+does I/O. Abstention is the default; the frequency cap is structural.
 
 ---
 
-## [x] Slice 1 — Reflection trigger (§7.4)  ·  `feat(proactivity): deterministic reflection trigger (§7.4) over the signal log`
-- [x] `proactivity/trigger_weights.py` — per-kind FUEL weights + attention DENYLIST(->0.0); fuel != reward
-- [x] `proactivity/trigger.py` — `accumulated_fuel(since)` + `should_reflect(...)`; `REFLECTION_THRESHOLD` in config
-- [x] `stores` — `get_signals_since(seq)`/`latest_signal_seq` + `ReflectionState` (last seq) get/save; boundary guard: proactivity math imports no LLM
-- [x] Verify: `test_reflection_trigger.py` (fuel + denylist->0.0 + accumulation + threshold, no LLM); `test_proactivity_store.py` (window + state round-trip)
+## [ ] Slice 1 — Candidate model + registry + owned-data generators  ·  `feat(proactivity): candidate generation over owned data (goals, budget, recurring, calendar)`
+- [ ] `proactivity/candidate.py` — `Provenance` + `Candidate` + `CandidateGenerator` Protocol + `GENERATORS` registry + `generate_all` (union + dedup by `entity_key`)
+- [ ] `proactivity/generators.py` — owned generators (pure `(state)->[Candidate]`): `goal_deadline`, `stale_goal` (created_at+progress proxy; no Goal.updated_at), `budget_threshold`, `recurring_bill_due` (next = last_txn + cadence; Recurring has no due date), `event_prep` (next timed event in horizon)
+- [ ] Verify: `test_candidate_generators.py` — each fires + abstains; provenance reason/source_ids non-empty; dedup by entity_key; no facade/HTTP/LLM in generators
 
-## [x] Slice 2 — Reflection context + grounded synthesis (Stage 4)  ·  `feat(proactivity): grounded reflection synthesis over retrieved memories + signal aggregates`
-- [x] (source-driven) confirmed Ollama JSON-schema generation + memory/signal shapes
-- [x] `proactivity/context.py` — `build_context(signals_since, memories, goals, *, now)`: DETERMINISTIC (rhythms/modality/time-of-day from signals; interests grounding from explicit memories+goals); injected now+memories; redacted
-- [x] `proactivity/reflect.py` — `synthesize` JSON-constrained → validated typed `Insight`s; grounded iff links resolve; malformed/ungrounded/verbatim dropped; `reflect()` writes `MemoryRecord(type=reflection, links)`
-- [x] `service.reflect()` (trigger-gate or force; metadata-only signal); `__main__` + `:reflect`
-- [x] Verify: `test_reflection_context.py` (byte-for-byte grounding); `test_reflect.py` (fake LLM → linked memories; ungrounded/malformed/verbatim dropped); facade reflect tests; integration-gated live
+## [ ] Slice 2 — Watchlist + collector generators  ·  `feat(proactivity): user-owned public watchlist and collector candidate generators (market/news/yc)`
+- [ ] `stores` — `Watchlist` CRUD (add/get/remove) + `watchlist(kind,value UNIQUE)` table (raw SQL in sqlite); symbols ∪ `config.market_watchlist` fallback
+- [ ] `cli.py` — `:watch add|list|rm`
+- [ ] `proactivity/generators.py` — collector generators (pure over `state.connector_items`): `market_move` (|change_pct| ≥ `market_move_pct`), `watched_news`/`yc_launch` (news/HN for watch topics)
+- [ ] `config` — `market_move_pct`
+- [ ] Verify: `test_watchlist_store.py` (round-trip) + collector generator cases; **boundary test: collector query terms are public watchlist only (no private text)**
 
-## [x] Slice 3 — User model (Stage 5, inspectable + controllable)  ·  `feat(proactivity): inspectable user model materialized by reflection (confidence rise/decay)`
-- [x] `proactivity/user_model.py` — `UserModel` (§5.3); pure `confidence_after` (rise/decay, pinned); pure-frequency NEVER raises an amplifiable weight (Core §8); suppress_interest; to/from_dict
-- [x] `stores` — user_model get/save/clear; `MemoryStore.forget` + `VectorStore.delete`; reflection merges into the model
-- [x] `service.user_model()/forget/reset_user_model`; `cli` `:profile`(+reset) / `:why` / `:forget` / `:reflect`
-- [x] Verify: `test_user_model.py` (confidence_after exact; goal-linked-amplifies-but-frequency-doesn't; reconfirm up; suppress decays; round-trip); facade inspect/forget/reset; `:profile`/`:why` smoke
+## [ ] Slice 3 — Features + ranker + gate (§7.2)  ·  `feat(proactivity): explainable usefulness ranking with abstention and a structural frequency cap`
+- [ ] `proactivity/features.py` — calibrated [0,1] monotone, PURE (no LLM/httpx/attention): `goal_relevance`, `urgency`, `interest_match` (max goal-linked `Interest.weight`; 0 for pure-freq), `timing_fit` (rhythms + config quiet-hours; no UserModel.dnd), `novelty`, `recent_interruption_penalty`
+- [ ] `proactivity/rank.py` — `usefulness`=Σβ·f (absolute, NO min-max) + `contributions`; `select` = abstain @ `usefulness_threshold` → DND gate → entity cooldown → per-category cap → global cap → top-K
+- [ ] `config` — β weights, `usefulness_threshold`, caps/window, `entity_cooldown`, `urgency_horizon`, `stale_goal_days`, `novelty_lambda`, `quiet_hours_*`, `proactivity_enabled`
+- [ ] Verify: `test_proactivity_features.py` + `test_rank.py` — exact sum; **§8 guards each a test** (no attention feature; interest_match=0 pure-freq; weak pool→[]; structural cap bounds volume; cooldown/cap/DND; top-K order); boundary: features/rank/candidate import no LLM + no httpx
 
-### ▸ Checkpoint: 5a SHIPPED. 284 green, ruff clean. 3-lens review (code + privacy + objective-drift) done; 4 findings fixed (lost-signal window, suppress_topic autonomy lever, self-loop denylist, synthesis-failure retry) + guard tests. Pushed (d08b03b). Learnings in DECISIONS (Phase 5a + D23). → THEN spec 5b.
+## [ ] Slice 4 — Engine + persistence + phrasing + wiring  ·  `feat(proactivity): suggestion engine - generate, rank, phrase, persist, post to the feed`
+- [ ] `proactivity/phrase.py` — LLM phrases card body only (the only 5b model call)
+- [ ] `proactivity/suggest.py` — engine: gather `EngineState` (connector fetch w/ watchlist terms only) → generate_all → select → phrase → persist `Suggestion` → `[Card]`; abstain → `[]`
+- [ ] `stores` — `save_suggestion` + `get_recent_suggestions`; `suggestions` table (§5.5)
+- [ ] `service.py` — `suggestions()` + `add/list/remove_watch`; metadata-only `suggest` + `suggestion_shown` signals (0 fuel)
+- [ ] `ui/feed.py` `Card.why` + `ui/controller.show_suggestions`; `cli`/`__main__` `:suggest` + `suggest` subcommand
+- [ ] Verify: `test_suggest_engine.py` (fake LLM → cards w/ deterministic why resolving to real ids; Suggestion persisted; metadata-only signals; abstention message) + facade/controller tests; `pytest -q` offline green; live phrasing/collectors integration-gated
 
-## [ NORTH STAR / next cycles ] 5b — Engine ; 5c — Feedback + scheduler
-- 5b: deterministic candidate triggers → explainable usefulness ranking (§7.2) → top-K cards to the feed; every card answers "why am I seeing this?"
-- 5c: `Outcome` → §7.5 model/ranker update (shown/dwell NEVER rewards) + explore/exploit (§7.3) + freq-cap/off-switch + scheduler + auto-briefing; a test proves the objective is usefulness, not engagement
+### ▸ Checkpoint: 5b feature-complete → `/test` → multi-lens review (incl. objective-drift lens, vs a real ranker) → fix → `/code-simplify` → `/ship` (push) → learnings in DECISIONS → THEN spec 5c.
+
+## [ NORTH STAR / next cycle ] 5c — Feedback + scheduler
+- `Outcome` → value-corroborated reward (acted-AND-good-outcome / explicit helpful; `acted` alone non-positive; reward by magnitude not count) → user model + β weights (§7.5); holdout value metric (drift alarm); explore/exploit (§7.3, pessimistic cold-start prior, ε decays, never raises volume); dismissal → exponential-backoff cooldown; scheduler (Heartbeat) → once-daily digest + event-triggered real-time; auto-briefing. A test proves the objective is usefulness, not engagement.

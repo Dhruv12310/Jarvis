@@ -129,6 +129,20 @@ class Config:
         default_factory=lambda: float(os.environ.get("JARVIS_CONFIDENCE_GAMMA", "0.3"))
     )
 
+    # Phase 5b proactivity engine. Candidate generators fire within these deterministic horizons.
+    urgency_horizon_hours: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_URGENCY_HORIZON_HOURS", "72"))
+    )
+    stale_goal_days: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_STALE_GOAL_DAYS", "14"))
+    )
+    budget_near_fraction: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_BUDGET_NEAR_FRACTION", "0.1"))
+    )
+    recurring_horizon_days: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_RECURRING_HORIZON_DAYS", "5"))
+    )
+
     def ensure_dirs(self) -> None:
         """Create the data directories on demand. They are git-ignored and never committed."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
