@@ -27,7 +27,7 @@ nothing about my behavior leaves the machine. Run as 5a → 5b → 5c (each its 
 - [x] `service.user_model()/forget/reset_user_model`; `cli` `:profile`(+reset) / `:why` / `:forget` / `:reflect`
 - [x] Verify: `test_user_model.py` (confidence_after exact; goal-linked-amplifies-but-frequency-doesn't; reconfirm up; suppress decays; round-trip); facade inspect/forget/reset; `:profile`/`:why` smoke
 
-### ▸ Checkpoint: 5a feature-complete (277 green) → review (incl. objective-drift lens) → push → THEN spec 5b
+### ▸ Checkpoint: 5a SHIPPED. 284 green, ruff clean. 3-lens review (code + privacy + objective-drift) done; 4 findings fixed (lost-signal window, suppress_topic autonomy lever, self-loop denylist, synthesis-failure retry) + guard tests. Pushed (d08b03b). Learnings in DECISIONS (Phase 5a + D23). → THEN spec 5b.
 
 ## [ NORTH STAR / next cycles ] 5b — Engine ; 5c — Feedback + scheduler
 - 5b: deterministic candidate triggers → explainable usefulness ranking (§7.2) → top-K cards to the feed; every card answers "why am I seeing this?"

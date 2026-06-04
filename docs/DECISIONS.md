@@ -211,3 +211,29 @@ if/when it reaches a user surface.
 reproducible. Add a hash-pinned lockfile + an upper bound (`plaid-python>=39,<40`) and wire pip-audit
 when CI lands. `redact.py` was broadened this phase to also scrub secret/access_token/client_id JSON
 fields, and the `import --plaid` path is wrapped to never print a raw traceback.
+
+## Phase 5a conventions established (reflection + user model)
+
+- USEFULNESS-not-engagement is CODE, not prose, on the two load-bearing paths: the trigger denylist
+  zeroes fuel for attention kinds (suggestion_shown/item_dwell) AND for self-referential meta kinds
+  (reflect/forget/user_model/reset/suppress_topic) so a passive view OR the system inspecting itself
+  can never drive reflection; and user_model._merge_interest raises an amplifiable `weight` ONLY for a
+  goal-linked topic - pure frequency records confidence but stays weight 0.0 (tested across 50
+  reconfirmations). A compulsion the user repeats cannot train the ranker.
+- Reflection is deterministic-first: trigger fuel, context assembly, and the confidence_after update
+  law are pure code; the LLM only synthesizes typed insights over a code-built, redacted context and
+  is kept honest by grounding (links must resolve to THIS context, malformed/ungrounded/verbatim
+  dropped). A boundary test asserts the proactivity math modules import no LLM.
+- The signal log is the reflection cursor: get_signals_since(seq) over the monotonic append-only seq.
+  reflect() advances the baseline to the max seq of the WINDOW IT PROCESSED (carried on SignalEvent.seq
+  at read time), never the global max - else a signal written during the slow synthesis (Heartbeat or
+  another front-end) is skipped forever. A hard synthesis failure leaves the baseline un-advanced and
+  retries; only a clean empty parse advances. The reflect signal itself carries metadata only.
+- Autonomy is wired, not just designed: :profile (inspect), :why (the grounding behind an insight),
+  :forget <id> (delete a source memory), :profile suppress <topic> (pull down one inferred interest),
+  :profile reset (wipe the model). suppress keeps the free-text topic out of the signal log.
+
+### D23 - Per-topic suppress decays but does not pin (revisit: Phase 5c feedback)
+suppress_topic decays an interest weight+confidence toward 0 but a later goal-linked reflection can
+re-raise it. Acceptable for 5a (the act is a correction, not a permanent veto); 5c feedback may want a
+sticky "never amplify" flag if a user repeatedly suppresses the same topic.
