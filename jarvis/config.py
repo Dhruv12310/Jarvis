@@ -142,6 +142,9 @@ class Config:
     recurring_horizon_days: int = field(
         default_factory=lambda: int(os.environ.get("JARVIS_RECURRING_HORIZON_DAYS", "5"))
     )
+    market_move_pct: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_MARKET_MOVE_PCT", "3.0"))
+    )
 
     def ensure_dirs(self) -> None:
         """Create the data directories on demand. They are git-ignored and never committed."""

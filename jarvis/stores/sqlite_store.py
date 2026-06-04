@@ -15,7 +15,7 @@ from pathlib import Path
 
 from jarvis.finance.transaction import Account, Budget, Transaction
 from jarvis.signals.event import SignalEvent
-from jarvis.stores.structured import Goal, Note, ReflectionState, StructuredStore
+from jarvis.stores.structured import Goal, Note, ReflectionState, StructuredStore, Watch
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS notes (
@@ -103,6 +103,15 @@ CREATE TABLE IF NOT EXISTS user_model (
 )
 """
 
+# Watchlist (Phase 5b): the user's PUBLIC watch terms - the only terms a collector query may use.
+_WATCHLIST_SCHEMA = """
+CREATE TABLE IF NOT EXISTS watchlist (
+    kind  TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (kind, value)
+)
+"""
+
 
 class SQLiteStructuredStore(StructuredStore):
     def __init__(self, db_path: Path | str) -> None:
@@ -120,6 +129,7 @@ class SQLiteStructuredStore(StructuredStore):
         self._conn.execute(_CATEGORY_OVERRIDES_SCHEMA)
         self._conn.execute(_REFLECTION_STATE_SCHEMA)
         self._conn.execute(_USER_MODEL_SCHEMA)
+        self._conn.execute(_WATCHLIST_SCHEMA)
         self._conn.commit()
 
     def save_note(self, content: str) -> Note:
@@ -349,6 +359,22 @@ class SQLiteStructuredStore(StructuredStore):
 
     def clear_user_model(self) -> None:
         self._conn.execute("DELETE FROM user_model")
+        self._conn.commit()
+
+    def add_watch(self, kind: str, value: str) -> None:
+        self._conn.execute(
+            "INSERT OR IGNORE INTO watchlist (kind, value) VALUES (?, ?)", (kind, value)
+        )
+        self._conn.commit()
+
+    def get_watchlist(self) -> list[Watch]:
+        rows = self._conn.execute(
+            "SELECT kind, value FROM watchlist ORDER BY kind, value"
+        ).fetchall()
+        return [Watch(kind=row["kind"], value=row["value"]) for row in rows]
+
+    def remove_watch(self, kind: str, value: str) -> None:
+        self._conn.execute("DELETE FROM watchlist WHERE kind = ? AND value = ?", (kind, value))
         self._conn.commit()
 
     def close(self) -> None:

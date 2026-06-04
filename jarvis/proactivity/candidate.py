@@ -21,24 +21,36 @@ class Provenance:
 
 
 @dataclass(frozen=True)
+class Fetched:
+    """One collector item paired with the PUBLIC watchlist term it was fetched for (so a candidate
+    can carry its provenance + topic without the generator ever touching HTTP)."""
+
+    source: str  # connector name: markets | news | hn
+    term: str  # the public watchlist term this item answers (never private text)
+    item: object  # connectors.base.Item (kept loose so this module imports no connector)
+
+
+@dataclass(frozen=True)
 class Candidate:
     type: str  # candidate_type enum (§5.5): goal_nudge|budget_alert|followup_due|free_time|...
     entity_key: str  # dedup + cooldown key ("goal:7", "budget:dining", "symbol:NVDA")
     features: dict  # raw deterministic scalar inputs for the ranker (deadline_hours, days_until)
     provenance: Provenance
     payload: dict  # LOCAL data the phraser needs; never a signal/attention field, never logged raw
+    topics: list[str] = field(default_factory=list)  # what it's "about", for interest_match (5b S3)
 
 
 @dataclass(frozen=True)
 class EngineState:
     """A frozen snapshot the engine gathers ONCE and hands to the pure generators/ranker. Grows in
-    later slices (watchlist + connector items, user model, recent suggestions)."""
+    later slices (user model, recent suggestions)."""
 
     now: datetime
     goals: list = field(default_factory=list)  # active Goal[]
     budget_status: list = field(default_factory=list)  # BudgetStatus[]
     transactions: list = field(default_factory=list)  # Transaction[]
     events: list = field(default_factory=list)  # CalendarEvent[] (today/upcoming)
+    connector_items: list = field(default_factory=list)  # Fetched[] (collector items + their term)
 
 
 class CandidateGenerator(Protocol):

@@ -8,17 +8,22 @@ from decimal import Decimal
 from pathlib import Path
 
 from jarvis.calendar.client import CalendarEvent
+from jarvis.connectors.base import Item
 from jarvis.finance.transaction import BudgetStatus, Transaction
 from jarvis.proactivity import candidate as cand_mod
 from jarvis.proactivity import generators as gens_mod
-from jarvis.proactivity.candidate import EngineState
+from jarvis.proactivity.candidate import EngineState, Fetched
 from jarvis.proactivity.generators import (
     budget_threshold,
+    collector_queries,
     event_prep,
     generate_all,
     goal_deadline,
+    market_move,
     recurring_bill_due,
     stale_goal,
+    watched_news,
+    yc_launch,
 )
 from jarvis.stores.structured import Goal
 
@@ -209,3 +214,50 @@ def test_generators_take_only_injected_state():
     empty = EngineState(now=NOW)
     for gen in (goal_deadline, stale_goal, budget_threshold, recurring_bill_due, event_prep):
         assert gen(empty) == []
+
+
+# --- collector generators (over already-fetched items) ---------------------------------
+
+
+def _fetched(source, term, *, title="t", extra=None, url=None):
+    return Fetched(
+        source=source, term=term, item=Item(title=title, detail="d", url=url, extra=extra or {})
+    )
+
+
+def test_market_move_fires_above_threshold_and_abstains_below():
+    big = _fetched("markets", "NVDA", title="NVDA", extra={"change_pct": 5.0})
+    small = _fetched("markets", "AAPL", title="AAPL", extra={"change_pct": 0.3})
+    state = EngineState(now=NOW, connector_items=[big, small])
+
+    out = market_move(state)
+
+    assert [c.entity_key for c in out] == ["symbol:NVDA"]
+    assert out[0].type == "market_move" and out[0].topics == ["NVDA"]
+
+
+def test_watched_news_and_yc_launch_carry_the_public_watch_topic():
+    news = _fetched("news", "local LLMs", title="A new local model", url="http://x")
+    hn = _fetched("hn", "rust", title="Rust 2.0", extra={"object_id": "42"})
+    state = EngineState(now=NOW, connector_items=[news, hn])
+
+    n, h = watched_news(state), yc_launch(state)
+
+    assert n[0].type == "news" and n[0].topics == ["local LLMs"]
+    assert n[0].provenance.source_ids == ["watch:local LLMs"]  # the "why" is the watched term
+    assert h[0].type == "yc_launch" and h[0].entity_key == "hn:42" and h[0].topics == ["rust"]
+
+
+def test_collector_generators_abstain_without_items():
+    empty = EngineState(now=NOW)
+    assert market_move(empty) == watched_news(empty) == yc_launch(empty) == []
+
+
+def test_collector_queries_use_only_public_watch_terms():
+    # The trust boundary: the ONLY terms that go out to a connector are watchlist terms - never
+    # a goal description, a memory, or any private text.
+    queries = collector_queries(["NVDA"], ["local LLMs"])
+
+    assert {term for _src, term in queries} == {"NVDA", "local LLMs"}
+    assert ("markets", "NVDA") in queries
+    assert ("news", "local LLMs") in queries and ("hn", "local LLMs") in queries

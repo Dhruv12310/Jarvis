@@ -31,7 +31,7 @@ from jarvis.proactivity.user_model import UserModel
 from jarvis.results import AgendaResult, AskResult
 from jarvis.signals.event import SignalEvent
 from jarvis.signals.log import SignalLog
-from jarvis.stores.structured import Goal, StructuredStore
+from jarvis.stores.structured import Goal, StructuredStore, Watch
 
 # What the briefing pulls from the Phase-1 knowledge pipeline. Fixed for Phase 2/3; goal-derived
 # digests are a later refinement.
@@ -260,6 +260,30 @@ class JarvisService:
         """Wipe the materialized user model (a user-controlled reset)."""
         with self._signal("user_model_reset"):
             self._store.clear_user_model()
+
+    # --- watchlist (Phase 5b): the user's PUBLIC watch terms for collector candidates -------
+
+    def add_watch(self, kind: str, value: str) -> Watch:
+        """Watch a public symbol or topic. Symbols are upper-cased; this is the only data a
+        collector query may be built from (the trust boundary for candidate fetch)."""
+        with self._signal("watch_add") as sig:
+            if kind not in ("symbol", "topic"):
+                raise ValueError("watch kind must be 'symbol' or 'topic'")
+            value = value.strip().upper() if kind == "symbol" else value.strip()
+            self._store.add_watch(kind, value)
+            sig["kind"] = kind  # kind only - the term is public but stays out of the signal log
+            return Watch(kind=kind, value=value)
+
+    def watchlist(self) -> list[Watch]:
+        with self._signal("watch_list") as sig:
+            items = self._store.get_watchlist()
+            sig["count"] = len(items)
+            return items
+
+    def remove_watch(self, kind: str, value: str) -> None:
+        with self._signal("watch_remove"):
+            value = value.strip().upper() if kind == "symbol" else value.strip()
+            self._store.remove_watch(kind, value)
 
     def recent_signals(self, limit: int = 20) -> list[SignalEvent]:
         """Read-only inspector over the raw signal log. Does NOT emit (it would self-reference)."""

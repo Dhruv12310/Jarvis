@@ -381,6 +381,20 @@ def test_forget_deletes_a_memory(tmp_path, fake_embedder):
     assert service.memories() == []
 
 
+def test_add_watch_uppercases_symbols_and_logs_metadata_only(tmp_path, fake_embedder):
+    service, store = _service(tmp_path, fake_embedder)
+
+    service.add_watch("symbol", "nvda")
+    service.add_watch("topic", "local LLMs")
+
+    assert {(w.kind, w.value) for w in service.watchlist()} == {
+        ("symbol", "NVDA"),
+        ("topic", "local LLMs"),
+    }
+    sig = [s for s in store.get_signals() if s.kind == "watch_add"][0]
+    assert "NVDA" not in str(sig.payload)  # the term stays out of the signal log
+
+
 def test_recent_signals_is_a_non_emitting_inspector(tmp_path, fake_embedder):
     service, store = _service(tmp_path, fake_embedder)
     service.add_goal("x")  # 1 signal

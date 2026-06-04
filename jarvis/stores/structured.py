@@ -35,6 +35,12 @@ class Goal:
 
 
 @dataclass(frozen=True)
+class Watch:
+    kind: str  # symbol | topic
+    value: str  # a PUBLIC term the user chose to watch (a ticker or a topic phrase)
+
+
+@dataclass(frozen=True)
 class ReflectionState:
     last_seq: int  # signal-log seq processed by the last reflection (monotonic baseline)
     last_reflection_at: datetime | None
@@ -149,3 +155,15 @@ class StructuredStore(ABC):
     @abstractmethod
     def clear_user_model(self) -> None:
         """Wipe the materialized user model (a user-controlled reset)."""
+
+    @abstractmethod
+    def add_watch(self, kind: str, value: str) -> None:
+        """Add a public watch term (kind: symbol|topic); idempotent on (kind, value)."""
+
+    @abstractmethod
+    def get_watchlist(self) -> list[Watch]:
+        """Return all watch terms."""
+
+    @abstractmethod
+    def remove_watch(self, kind: str, value: str) -> None:
+        """Remove a watch term (no-op if absent)."""

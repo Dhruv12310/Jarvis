@@ -56,6 +56,7 @@ def goal_deadline(state: EngineState) -> list[Candidate]:
                     "deadline": deadline.isoformat(),
                     "priority": g.priority,
                 },
+                topics=[g.description],
             )
         )
     return out
@@ -86,6 +87,7 @@ def stale_goal(state: EngineState) -> list[Candidate]:
                     source_ids=[f"goal:{g.id}"],
                 ),
                 payload={"goal_id": g.id, "description": g.description, "progress": g.progress},
+                topics=[g.description],
             )
         )
     return out
@@ -117,6 +119,7 @@ def budget_threshold(state: EngineState) -> list[Candidate]:
                     "remaining": str(b.remaining),
                     "over": b.over,
                 },
+                topics=[b.category],
             )
         )
     return out
@@ -158,6 +161,7 @@ def recurring_bill_due(state: EngineState) -> list[Candidate]:
                     "cadence": rec.cadence,
                     "due": due.isoformat(),
                 },
+                topics=[rec.merchant],
             )
         )
     return out
@@ -186,13 +190,111 @@ def event_prep(state: EngineState) -> list[Candidate]:
                     source_ids=[f"event:{e.id}"],
                 ),
                 payload={"summary": e.summary, "start": start.isoformat(), "location": e.location},
+                topics=[e.summary],
             )
         )
     return out
 
 
+# --- collector generators (pure over already-fetched items; the engine does the HTTP) ----------
+
+
+def market_move(state: EngineState) -> list[Candidate]:
+    """A watched symbol whose absolute percent move clears the threshold."""
+    out = []
+    for f in state.connector_items:
+        if f.source != "markets":
+            continue
+        change_pct = (f.item.extra or {}).get("change_pct", 0.0)
+        if abs(change_pct) < config.market_move_pct:
+            continue
+        symbol = f.item.title
+        out.append(
+            Candidate(
+                type="market_move",
+                entity_key=f"symbol:{symbol}",
+                features={
+                    "change_pct": float(change_pct),
+                    "abs_change_pct": abs(float(change_pct)),
+                },
+                provenance=Provenance(
+                    generator="market_move",
+                    reason=f"{symbol} moved {change_pct:+.2f}% (on your watchlist).",
+                    source_ids=[f"watch:{f.term}"],
+                ),
+                payload={"symbol": symbol, "detail": f.item.detail, "url": f.item.url},
+                topics=[symbol],
+            )
+        )
+    return out
+
+
+def _news_candidate(f, *, generator: str, ctype: str, key_prefix: str, key: str) -> Candidate:
+    return Candidate(
+        type=ctype,
+        entity_key=f"{key_prefix}:{key}",
+        features={},
+        provenance=Provenance(
+            generator=generator,
+            reason=f"On your watched topic '{f.term}': {f.item.title}",
+            source_ids=[f"watch:{f.term}"],
+        ),
+        payload={"title": f.item.title, "detail": f.item.detail, "url": f.item.url},
+        topics=[f.term],
+    )
+
+
+def watched_news(state: EngineState) -> list[Candidate]:
+    """A news article fetched for a watched topic."""
+    return [
+        _news_candidate(
+            f,
+            generator="watched_news",
+            ctype="news",
+            key_prefix="news",
+            key=f.item.url or f.item.title,
+        )
+        for f in state.connector_items
+        if f.source == "news"
+    ]
+
+
+def yc_launch(state: EngineState) -> list[Candidate]:
+    """A Hacker News / YC story fetched for a watched topic."""
+    return [
+        _news_candidate(
+            f,
+            generator="yc_launch",
+            ctype="yc_launch",
+            key_prefix="hn",
+            key=str((f.item.extra or {}).get("object_id") or f.item.url or f.item.title),
+        )
+        for f in state.connector_items
+        if f.source == "hn"
+    ]
+
+
+def collector_queries(symbols: list[str], topics: list[str]) -> list[tuple[str, str]]:
+    """Map the PUBLIC watchlist to (connector, term) fetches. The ONLY terms that ever go outbound
+    are watchlist terms - never a goal description, memory, or any private text."""
+    queries = [("markets", s) for s in symbols]
+    for topic in topics:
+        queries.append(("news", topic))
+        queries.append(("hn", topic))
+    return queries
+
+
 # Registry order matters: an earlier generator wins a shared entity_key in generate_all.
-GENERATORS = [goal_deadline, stale_goal, budget_threshold, recurring_bill_due, event_prep]
+GENERATORS = [
+    goal_deadline,
+    stale_goal,
+    budget_threshold,
+    recurring_bill_due,
+    event_prep,
+    market_move,
+    watched_news,
+    yc_launch,
+]
 
 
 def generate_all(state: EngineState, generators=None) -> list[Candidate]:

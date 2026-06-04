@@ -180,6 +180,34 @@ def _handle_budget(argument: str, service: JarvisService) -> None:
         print(f"  {s.category}: {actual} of {limit} ({left} left){flag}")
 
 
+def _handle_watch(argument: str, service: JarvisService) -> None:
+    parts = argument.split(maxsplit=2)
+    verb = parts[0].lower() if parts else "list"
+    if verb == "list" or not parts:
+        items = service.watchlist()
+        if not items:
+            print('(watchlist empty; :watch add symbol NVDA  /  :watch add topic "local LLMs")')
+            return
+        for w in items:
+            print(f"  {w.kind}: {w.value}")
+        return
+    if verb in ("add", "rm", "remove") and len(parts) == 3:
+        kind, value = parts[1].lower(), parts[2].strip().strip('"').strip("'")
+        try:
+            if verb == "add":
+                watched = service.add_watch(kind, value)
+                print(f"watching {watched.kind}: {watched.value}")
+            else:
+                service.remove_watch(kind, value)
+                print(f"unwatched {kind}: {value}")
+        except ValueError as exc:
+            print(str(exc))
+        return
+    print(
+        "usage: :watch list | :watch add <symbol|topic> <value> | :watch rm <symbol|topic> <value>"
+    )
+
+
 def _render_profile(model) -> None:
     print(f"user model (updated {model.updated_at or 'never'}):")
     print("  interests:")
@@ -264,6 +292,8 @@ def _handle_command(text: str, service: JarvisService) -> None:
             print(f"  {account.name} ({account.type}): {format_money(account.balance)}")
     elif command == "budget":
         _handle_budget(argument, service)
+    elif command == "watch":
+        _handle_watch(argument, service)
     elif command == "reflect":
         print(f"reflected: {service.reflect(force=True)} insight(s)")
     elif command == "profile":
