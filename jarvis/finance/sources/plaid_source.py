@@ -20,10 +20,14 @@ from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 
 from jarvis.config import config
+from jarvis.finance.money import to_cents
 from jarvis.finance.sources.base import TransactionSource
 from jarvis.finance.transaction import Account, Transaction, make_id
 
 _ENVIRONMENTS = {"sandbox": plaid.Environment.Sandbox, "production": plaid.Environment.Production}
+# Account types whose Plaid balance is owed money (a debt). Plaid reports these as a POSITIVE
+# `current`; net worth treats debt as negative, so we flip the sign for these (matching OFX).
+_LIABILITY_TYPES = {"credit", "loan"}
 
 
 class PlaidSource(TransactionSource):
@@ -72,7 +76,9 @@ class PlaidSource(TransactionSource):
 def _normalize(plaid_transactions, plaid_accounts) -> tuple[list[Transaction], list[Account]]:
     transactions = []
     for t in plaid_transactions:
-        amount = -Decimal(str(t.amount))  # Plaid: +ve = outflow -> our convention: -ve = outflow
+        # Plaid: +ve = outflow -> our convention: -ve = outflow. to_cents pins the precision since
+        # the SDK yields a float (the one place a float touches money).
+        amount = to_cents(-Decimal(str(t.amount)))
         merchant = (getattr(t, "merchant_name", None) or t.name or "").strip()
         txn_date = t.date if isinstance(t.date, date) else date.fromisoformat(str(t.date))
         account = str(t.account_id)
@@ -88,13 +94,12 @@ def _normalize(plaid_transactions, plaid_accounts) -> tuple[list[Transaction], l
         )
     accounts = []
     for a in plaid_accounts:
+        account_type = str(a.type)
         current = a.balances.current
+        balance = to_cents(Decimal(str(current))) if current is not None else Decimal("0.00")
+        if account_type in _LIABILITY_TYPES:
+            balance = -balance  # Plaid reports debt as positive; net worth needs it negative
         accounts.append(
-            Account(
-                id=str(a.account_id),
-                name=a.name,
-                type=str(a.type),
-                balance=Decimal(str(current)) if current is not None else Decimal(0),
-            )
+            Account(id=str(a.account_id), name=a.name, type=account_type, balance=balance)
         )
     return transactions, accounts

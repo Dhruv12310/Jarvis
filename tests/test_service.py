@@ -38,6 +38,7 @@ def _service(tmp_path, fake_embedder, *, knowledge=None, llm=None, source="cli")
         memory=memory,
         signals=signals,
         source=source,
+        llm=llm,  # facade's structured-parse LLM (finance); None for non-finance tests
     )
     return service, store
 
@@ -177,6 +178,68 @@ def test_recategorize_persists_and_signals_without_a_merchant_string(tmp_path, f
     assert sig.kind == "recategorize"
     assert sig.payload == {"source": "cli", "category": "groceries", "updated": 1}
     assert "SHELL" not in str(sig.payload)  # trust boundary: no merchant string in the log
+
+
+def _finance_txn(merchant, category, *, day=None, amount="-9.99", account="chk"):
+    from datetime import date
+    from decimal import Decimal
+
+    from jarvis.finance.transaction import Transaction, make_id
+
+    day = day or date(2026, 1, 5)
+    amt = Decimal(amount)
+    return Transaction(make_id(account, day, amt, merchant), day, amt, merchant, category, account)
+
+
+def test_categorize_unknowns_fills_via_the_llm(tmp_path, fake_embedder):
+    import json
+
+    class _CatLLM:
+        def generate(self, prompt, *, format=None, think=None):
+            return json.dumps({"category": "entertainment"})
+
+    service, store = _service(tmp_path, fake_embedder, llm=_CatLLM())
+    store.save_transactions([_finance_txn("OBSCURE VENUE", "uncategorized")])
+
+    count = service.categorize_unknowns()
+
+    assert count == 1
+    assert store.get_transactions()[0].category == "entertainment"
+    assert any(s.kind == "categorize" for s in store.get_signals())
+
+
+def test_brief_finance_reports_month_total_and_top_category(tmp_path, fake_embedder, monkeypatch):
+    from datetime import date
+
+    service, store = _service(tmp_path, fake_embedder)
+    today = date.today()
+    store.save_transactions(
+        [
+            _finance_txn("CHIPOTLE", "dining", day=today, amount="-30.00"),
+            _finance_txn("UBER", "transport", day=today, amount="-15.00", account="cc"),
+        ]
+    )
+
+    line = service._brief_finance()
+
+    assert line is not None
+    assert "$45.00" in line  # engine total
+    assert "dining" in line and "$30.00" in line  # top category
+
+
+def test_brief_finance_is_none_without_month_data(tmp_path, fake_embedder):
+    service, _store = _service(tmp_path, fake_embedder)
+
+    assert service._brief_finance() is None
+
+
+def test_set_budget_rejects_an_unknown_category(tmp_path, fake_embedder):
+    from decimal import Decimal
+
+    service, _store = _service(tmp_path, fake_embedder)
+
+    with pytest.raises(ValueError):
+        service.set_budget("not-a-category", Decimal("100"))
 
 
 def test_recent_signals_is_a_non_emitting_inspector(tmp_path, fake_embedder):

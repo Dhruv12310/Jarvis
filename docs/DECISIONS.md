@@ -174,3 +174,40 @@ add when hardening: assert those transports don't appear outside `connectors/`.
 Phase 3 added flet + the voice stack (ctranslate2, av/ffmpeg, onnxruntime). Floors allow a future
 `pip install` to pull newer (possibly compromised) releases - a reproducibility risk more than a live
 CVE for local use. Commit a hash-pinned `requirements.lock`/`uv.lock` when CI lands.
+
+## Phase 4 conventions established (carry forward)
+
+- The absolute rule, made structural: EVERY financial figure is computed by the deterministic engine
+  (`finance/engine.py`), which imports NO LLM (a boundary test greps it). The LLM only classifies a
+  merchant string, parses a question into a FinanceQuery, and phrases an already-computed figure - the
+  Q&A test asserts the answered number equals the engine's output, never a model-invented one.
+- Money is `decimal.Decimal` end to end, stored as TEXT (exact), never float/REAL. `finance/money.py`
+  is the one place to quantize to cents + format for display; `make_id` quantizes before hashing so
+  -12.5 and -12.50 are the same transaction (idempotent across sources).
+- Source signs differ and are normalized to ours (negative = outflow): OFX TRNAMT is already negative-
+  for-outflow; Plaid `amount` is positive-for-outflow (negated) AND Plaid liability balances (credit/
+  loan) are positive-for-debt (negated for net worth). Getting a sign wrong corrupts every figure.
+- Trust boundary: CSV/OFX import is fully local; Plaid is the ONE outbound path - lazy-imported,
+  token-gated, boundary-confined to `finance/`. Signal log is metadata-only (no amounts, balances, or
+  merchant strings - only metric/count/category-enum labels). Two hard Nevers hold structurally:
+  no money-movement API is imported anywhere, and phrasing prompts report facts (no advice).
+- Verified library shapes (Phase 4): ofxtools `OFXTree().parse(f).convert()` -> statements (trnamt/
+  ledgerbal already Decimal, requires a valid SIGNON block); plaid-python 39 Configuration/PlaidApi +
+  transactions_sync (added/next_cursor/has_more) + accounts_get.
+
+## Phase 4 review/ship notes (deferred)
+
+### D20 - Recurring-charge median on even occurrence counts (revisit: Phase 5 proactivity)
+`recurring_charges` picks `amounts[len//2]` (upper-middle) as the "typical" charge, not the true
+average-of-two-middles for an even count, and the 15%-consistency guard divides by that median with no
+zero-guard. Harmless today (rejects rather than crashes); revisit when Phase 5 surfaces subscriptions.
+
+### D21 - period_over_period pct is an unrounded Decimal (revisit: if surfaced)
+The pct (`delta/prior*100`) can be a long non-terminating Decimal. It is internal today; quantize it
+if/when it reaches a user surface.
+
+### D22 - Lockfile for the now-large dep surface incl. plaid-python (extends D6/D16/D19)
+`plaid-python` (floor-pinned `>=39.0`) pulls urllib3/dateutil/etc. No live CVE, but builds aren't
+reproducible. Add a hash-pinned lockfile + an upper bound (`plaid-python>=39,<40`) and wire pip-audit
+when CI lands. `redact.py` was broadened this phase to also scrub secret/access_token/client_id JSON
+fields, and the `import --plaid` path is wrapped to never print a raw traceback.

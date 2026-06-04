@@ -9,8 +9,15 @@ from __future__ import annotations
 
 import re
 
+# URL query form: token=... / apikey=...
 _SECRET_PARAM = re.compile(r"(token|apikey)=[^&\s]+", re.IGNORECASE)
+# JSON/assignment form for the finance + auth secrets: "secret": "...", access_token=..., etc.
+_SECRET_FIELD = re.compile(
+    r'("?(?:secret|access_token|client_id|client_secret|api_key)"?\s*[:=]\s*"?)[^"\s,}]+',
+    re.IGNORECASE,
+)
 
 
 def redact(text: str) -> str:
-    return _SECRET_PARAM.sub(r"\1=***", text)
+    text = _SECRET_PARAM.sub(r"\1=***", text)
+    return _SECRET_FIELD.sub(r"\1***", text)

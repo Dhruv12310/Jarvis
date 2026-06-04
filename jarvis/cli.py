@@ -15,6 +15,7 @@ from jarvis.connectors.caching import CachingConnector
 from jarvis.connectors.hn import HackerNewsConnector
 from jarvis.connectors.markets import MarketsConnector
 from jarvis.connectors.news import NewsConnector
+from jarvis.finance.money import format_money
 from jarvis.knowledge.answerer import Answerer
 from jarvis.knowledge.pipeline import Knowledge
 from jarvis.knowledge.router import Router
@@ -160,7 +161,10 @@ def _handle_budget(argument: str, service: JarvisService) -> None:
         except InvalidOperation:
             print("usage: :budget set <category> <amount>  (amount must be a number)")
             return
-        print(f"budget set: {budget.category} = {budget.limit}/{budget.period}")
+        except ValueError as exc:
+            print(str(exc))
+            return
+        print(f"budget set: {budget.category} = {format_money(budget.limit)}/{budget.period}")
         return
     statuses = service.budget_status()
     if not statuses:
@@ -168,7 +172,12 @@ def _handle_budget(argument: str, service: JarvisService) -> None:
         return
     for s in statuses:
         flag = "  OVER" if s.over else ""
-        print(f"  {s.category}: {s.actual} of {s.limit} ({s.remaining} left){flag}")
+        actual, limit, left = (
+            format_money(s.actual),
+            format_money(s.limit),
+            format_money(s.remaining),
+        )
+        print(f"  {s.category}: {actual} of {limit} ({left} left){flag}")
 
 
 def _handle_command(text: str, service: JarvisService) -> None:
@@ -233,7 +242,7 @@ def _handle_command(text: str, service: JarvisService) -> None:
             print("(no accounts; import an OFX/QFX file)")
             return
         for account in accounts:
-            print(f"  {account.name} ({account.type}): {account.balance}")
+            print(f"  {account.name} ({account.type}): {format_money(account.balance)}")
     elif command == "budget":
         _handle_budget(argument, service)
     elif command == "signals":

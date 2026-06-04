@@ -112,3 +112,65 @@ def test_engine_is_reproducible():
     a = engine.spending_by_category(LEDGER)
     b = engine.spending_by_category(LEDGER)
     assert a == b
+
+
+def test_all_inflow_ledger_has_zero_spending():
+    inflows = [_txn(date(2026, 1, 10), "2000.00", "PAYROLL", "income")]
+
+    assert engine.total_spending(inflows) == Decimal("0")
+    assert engine.spending_by_category(inflows) == {}
+    assert engine.spending_by_period(inflows) == {}
+
+
+def test_no_float_drift_in_summation():
+    txns = [
+        _txn(date(2026, 1, 1), "-0.10", "A", "dining"),
+        _txn(date(2026, 1, 2), "-0.20", "B", "dining"),
+    ]
+    assert engine.total_spending(txns) == Decimal("0.30")  # exact, not 0.30000000000000004
+
+
+def test_budget_exactly_at_limit_is_not_over():
+    txns = [_txn(date(2026, 1, 5), "-40.00", "X", "dining")]
+    [status] = engine.budget_vs_actual(txns, [Budget("dining", Decimal("40.00"), "monthly")])
+
+    assert status.over is False  # strict >, so equal is not over
+    assert status.remaining == Decimal("0.00")
+
+
+def test_recurring_rejects_inconsistent_amounts():
+    txns = [
+        _txn(date(2026, 1, 3), "-9.99", "NETFLIX", "entertainment"),
+        _txn(date(2026, 2, 3), "-9.99", "NETFLIX", "entertainment"),
+        _txn(date(2026, 3, 3), "-15.00", "NETFLIX", "entertainment"),  # > 15% off the median
+    ]
+    assert engine.recurring_charges(txns) == []
+
+
+def test_recurring_rejects_too_few_occurrences():
+    txns = [
+        _txn(date(2026, 1, 3), "-9.99", "NETFLIX", "entertainment"),
+        _txn(date(2026, 2, 3), "-9.99", "NETFLIX", "entertainment"),
+    ]
+    assert engine.recurring_charges(txns) == []
+
+
+def test_recurring_detects_weekly_cadence():
+    txns = [
+        _txn(date(2026, 1, 1), "-5.00", "GYM", "health"),
+        _txn(date(2026, 1, 8), "-5.00", "GYM", "health"),
+        _txn(date(2026, 1, 15), "-5.00", "GYM", "health"),
+    ]
+    [recurring] = engine.recurring_charges(txns)
+    assert recurring.cadence == "weekly"
+
+
+def test_spending_by_period_week_bucketing():
+    txns = [
+        _txn(date(2026, 1, 5), "-10.00", "A", "dining"),  # ISO 2026-W02
+        _txn(date(2026, 1, 6), "-5.00", "B", "dining"),  # same week
+        _txn(date(2026, 1, 12), "-3.00", "C", "dining"),  # ISO 2026-W03
+    ]
+    result = engine.spending_by_period(txns, "week")
+
+    assert result == {"2026-W02": Decimal("15.00"), "2026-W03": Decimal("3.00")}

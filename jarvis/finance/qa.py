@@ -14,6 +14,7 @@ from decimal import Decimal
 
 from jarvis.finance import engine
 from jarvis.finance.categorize import CATEGORIES
+from jarvis.finance.money import format_money
 
 _METRICS = ("spending", "balance")
 _PERIODS = ("this_month", "last_month", "all")
@@ -76,7 +77,7 @@ def phrase_prompt(question: str, label: str, value: Decimal) -> str:
         "Answer the finance question in one short sentence using ONLY the figure below. "
         "Do not compute, change, or add any number.\n"
         f"Question: {question}\n"
-        f"{label}: ${value}"
+        f"{label}: {format_money(value)}"
     )
 
 

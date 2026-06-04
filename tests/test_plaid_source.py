@@ -56,6 +56,13 @@ def test_normalize_accounts_to_decimal_balance():
     assert accounts[0].type == "depository"
 
 
+def test_normalize_flips_liability_balance_sign_for_net_worth():
+    # Plaid reports a card's `current` (amount owed) as POSITIVE; net worth needs it negative.
+    _, accounts = _normalize([], [_paccount("cc", "Card", "credit", 200.25)])
+
+    assert accounts[0].balance == Decimal("-200.25")
+
+
 @pytest.mark.integration
 def test_plaid_sync_live():
     if not config.plaid_access_token:

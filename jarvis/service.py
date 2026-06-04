@@ -15,7 +15,8 @@ from datetime import date, datetime
 
 from jarvis.briefing import BriefingData, phrase
 from jarvis.finance import engine, qa
-from jarvis.finance.categorize import Categorizer
+from jarvis.finance.categorize import CATEGORIES, Categorizer
+from jarvis.finance.money import format_money
 from jarvis.finance.transaction import Account, Budget, BudgetStatus
 from jarvis.knowledge.pipeline import Knowledge
 from jarvis.memory.record import MemoryRecord
@@ -160,6 +161,9 @@ class JarvisService:
 
     def set_budget(self, category: str, limit, period: str = "monthly") -> Budget:
         with self._signal("budget_set") as sig:
+            # Keep the signal log's category label an enum, not free text.
+            if category not in CATEGORIES:
+                raise ValueError(f"unknown category '{category}'; one of: {', '.join(CATEGORIES)}")
             budget = Budget(category=category, limit=limit, period=period)
             self._store.save_budget(budget)
             sig["category"] = category
@@ -227,7 +231,10 @@ class JarvisService:
             by_category = engine.spending_by_category(month)
             if by_category:
                 top, amount = max(by_category.items(), key=lambda kv: kv[1])
-                return f"Spent ${total} so far this month; top category: {top} (${amount})."
-            return f"Spent ${total} so far this month."
+                return (
+                    f"Spent {format_money(total)} so far this month; "
+                    f"top category: {top} ({format_money(amount)})."
+                )
+            return f"Spent {format_money(total)} so far this month."
         except Exception:
             return None

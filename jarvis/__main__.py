@@ -53,30 +53,36 @@ def main() -> int:
         from jarvis.stores.sqlite_store import SQLiteStructuredStore
 
         config.ensure_dirs()
-        if args[1] == "--plaid":
-            if not config.plaid_access_token:
-                print("Plaid not configured. Set JARVIS_PLAID_* in .env (docs/plaid-setup.md).")
-                return 1
-            from jarvis.finance.sources.plaid_source import (
-                PlaidSource,  # lazy: only loads plaid here
-            )
-
-            transactions, accounts = PlaidSource().load()
-        else:
-            from jarvis.finance.sources import source_for
-
-            transactions, accounts = source_for(args[1]).load()
-        store = SQLiteStructuredStore(config.db_path)
+        if args[1] == "--plaid" and not config.plaid_access_token:
+            print("Plaid not configured. Set JARVIS_PLAID_* in .env (docs/plaid-setup.md).")
+            return 1
         try:
-            # Categorize deterministically (rules + saved corrections) at import - no LLM, local.
-            # Unknown merchants stay "uncategorized"; the LLM fills them on demand later.
-            categorizer = Categorizer(overrides=store.get_category_overrides())
-            transactions = categorize_transactions(transactions, categorizer)
-            added = store.save_transactions(transactions)
-            for account in accounts:
-                store.save_account(account)
-        finally:
-            store.close()
+            if args[1] == "--plaid":
+                from jarvis.finance.sources.plaid_source import (
+                    PlaidSource,  # lazy: only loads plaid here
+                )
+
+                transactions, accounts = PlaidSource().load()
+            else:
+                from jarvis.finance.sources import source_for
+
+                transactions, accounts = source_for(args[1]).load()
+            store = SQLiteStructuredStore(config.db_path)
+            try:
+                # Categorize deterministically (rules + saved corrections) at import - no LLM.
+                # Unknown merchants stay "uncategorized"; the LLM fills them on demand later.
+                categorizer = Categorizer(overrides=store.get_category_overrides())
+                transactions = categorize_transactions(transactions, categorizer)
+                added = store.save_transactions(transactions)
+                for account in accounts:
+                    store.save_account(account)
+            finally:
+                store.close()
+        except Exception as exc:  # never let a raw traceback (esp. a Plaid error) hit the terminal
+            from jarvis.redact import redact
+
+            print(f"import failed: {redact(str(exc))}")
+            return 1
         print(
             f"imported {added} new transaction(s) from {len(transactions)} row(s); "
             f"{len(accounts)} account(s)"

@@ -69,6 +69,19 @@ def test_ofx_source_normalizes_transactions_and_balance(tmp_path):
     assert accounts[0].type == "checking"
 
 
+def test_csv_inflow_stays_positive_and_is_not_spending(tmp_path):
+    # CSV is the only raw-signed source: a positive deposit stays positive and is not spending.
+    from jarvis.finance import engine
+
+    path = tmp_path / "tx.csv"
+    path.write_text("date,amount,description\n2026-01-10,2000.00,PAYROLL\n", encoding="utf-8")
+
+    transactions, _ = source_for(path).load()
+
+    assert transactions[0].amount == Decimal("2000.00")
+    assert engine.total_spending(transactions) == Decimal("0")
+
+
 def test_source_for_rejects_unknown_extension(tmp_path):
     with pytest.raises(ValueError):
         source_for(tmp_path / "statement.pdf")

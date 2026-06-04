@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from jarvis.finance.money import to_cents
+
 
 @dataclass(frozen=True)
 class Transaction:
@@ -56,6 +58,10 @@ class Recurring:
 
 
 def make_id(account: str, txn_date: date, amount: Decimal, merchant: str) -> str:
-    """Deterministic id from the identifying fields -> idempotent import (same row -> same id)."""
-    raw = f"{account}|{txn_date.isoformat()}|{amount}|{merchant}"
+    """Deterministic id from the identifying fields -> idempotent import (same row -> same id).
+
+    The amount is quantized to cents first, so -12.5 and -12.50 (e.g. from different sources) hash
+    to the same id rather than double-counting the same transaction.
+    """
+    raw = f"{account}|{txn_date.isoformat()}|{to_cents(amount)}|{merchant}"
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
