@@ -1,168 +1,152 @@
-# Plan: Jarvis — Phase 3 (Voice + UI)
+# Plan: Jarvis — Phase 4 (Finance)
 
-Source-of-truth: `SPEC.md` (this phase) + `CLAUDE.md` invariants + `docs/Jarvis_Core_Spec.md` (§3
-Voice/UI are the *delivery surface* that feeds the Core; §5.5 `Suggestion.channel`; §8 Brain/on-demand).
-One vertical slice per commit. The load-bearing rule: **thin front-ends over one shared facade** — the
-GUI and voice never reimplement core logic. Phase 0–2 plans are in git history.
+Source-of-truth: `SPEC.md` (this phase) + `CLAUDE.md` invariants + `docs/Jarvis_Core_Spec.md` (§4
+deterministic-vs-LLM boundary; §5.2 finance in the StructuredStore). One vertical slice per commit.
+The defining rule: **every financial figure is computed by deterministic Tier-0 code; the LLM only
+classifies a merchant string, parses a question, and phrases a computed result — it never sums a
+number.** Phases 0–3 are shipped (plans in git history).
 
 ```
-Slice 1   App-service facade   JarvisService over the existing core; refactor CLI onto it (no behavior change)
+Slice 1   Model + store + import   Transaction/Account (Decimal) + finance store + CSV/OFX import (local)
         |
-Slice 2   UI shell             Flet window + chat + the Jarvis feed (briefing as a card) over the facade
-Slice 3   Shortcut buttons     common actions -> facade calls -> results into the feed
-        |  >>> Checkpoint: UI HALF is a complete, shippable milestone (pressure-release valve) <<<
-Slice 4   STT (push-to-talk)   record -> faster-whisper -> text enters the facade
-Slice 5   TTS + full loop      Piper speaks the answer; record->transcribe->answer->speak
+Slice 2   Deterministic engine     spending/balances/trends/recurring/budgets - pure, NO LLM (the proof)
+        |
+Slice 3   Categorization           rules + override store + LLM fallback (merchant string only); corrects
+        |
+Slice 4   Finance Q&A + briefing    LLM parse -> engine compute -> LLM phrase; :spend; briefing line
+        |
+Slice 5   Plaid source              opt-in automation behind the same interface (OQ1: import + Plaid)
 ```
 
-Order: Slice 1 first (unblocks every front-end). Slices 2–3 (UI half) and 4–5 (voice half) are largely
-independent after Slice 1; both touch `__main__.py` + the facade, so serialize there. **If voice drags,
-ship the UI half (1–3) and do voice as a clean follow-on.**
+Order: Slice 1 (data in) → Slice 2 (the math) → Slice 3 (labels) → Slice 4 (ask/surface) → Slice 5
+(Plaid, opt-in second source). Slices 1–4 are the local path (the everyday default); the engine (2) is
+the heart and is source-agnostic, so Plaid (5) plugs in without touching it.
 
 Dependency graph:
-- Slice 1 (facade) ← nothing; blocks all.
-- Slices 2, 3 ← Slice 1 (UI renders facade results).
-- Slice 4 ← Slice 1 (STT feeds `facade.ask`).
-- Slice 5 ← Slice 4 (speaks the answer; completes the loop).
+- Slice 1 (model+store+import) ← nothing; produces normalized rows.
+- Slice 2 (engine) ← Slice 1 (operates on stored transactions). The boundary guard lands here.
+- Slice 3 (categorize) ← Slice 1 (labels transactions; engine groups by them).
+- Slice 4 (Q&A+briefing) ← Slices 2 + 3 (compute + categorized) + the Phase 3 facade/briefing.
 
 ---
 
 ## Task List
 
-### Slice 1 — Application-service facade  [THE unblocker; no new behavior]
-**Description:** Extract a single `JarvisService` that composes the existing core and exposes capability
-methods returning **structured results** (not prints). Move signal capture into it (stamp `source`).
-Refactor the CLI onto it with **no user-facing behavior change**.
-
-**The bar (user-confirmed):** this touches working Phase 0–2 code, so "refactor" is not a license for
-drift — **every existing test stays green and the CLI behaves identically.** No regressions sneak in.
+### Slice 1 — Transaction model + finance store + CSV/OFX import  [local data in]
+**Source-driven first:** verify the current `ofxtools` parse API (`OFXTree().parse` → statement →
+transactions; `TRNAMT`/`DTPOSTED`/`NAME`/`MEMO`, `LEDGERBAL`) and a representative bank CSV shape.
 
 **Acceptance:**
-- [ ] `jarvis/results.py`: `AskResult(text, grounded, cached)`, `AgendaResult(events, connected)`.
-  (Goals/memory return the existing `Goal`/`MemoryRecord`; briefing returns `str`.)
-- [ ] `jarvis/service.py`: `JarvisService(*, orchestrator, knowledge, store, memory, signals, source)`
-  with `ask`, `briefing`, `add_goal`, `list_goals`, `complete_goal`, `agenda`, `remember`, `recall`.
-  Each method does the existing work and **emits exactly one `SignalEvent`** with `{**payload, "source"}`.
-  The briefing's best-effort calendar+digest gathering moves here (so GUI/voice inherit the resilience).
-- [ ] `jarvis/cli.py`: `run()` builds `JarvisService(source="cli")`; `_loop`/`_handle_*` call facade
-  methods and render (print) the results; the per-turn `signals.emit` is removed (the facade emits now).
-- [ ] CLI observable behavior preserved: same prints for ask / `:goal*` / `:cal` / `:brief` / memory;
-  REPL still survives backend errors; key redaction intact.
+- [ ] `finance/transaction.py`: frozen `Transaction(id, date, amount: Decimal, merchant, category,
+  account)` + `Account(id, name, type, balance: Decimal)`. Money is **Decimal**, never float.
+- [ ] `finance/sources/base.py`: `TransactionSource` (ABC) `load() -> (list[Transaction], list[Account])`.
+  `csv_source.py` (stdlib csv), `ofx_source.py` (the ONLY `ofxtools` importer). Signs normalized
+  (negative = outflow); `id` = deterministic hash(account, date, amount, merchant).
+- [ ] `stores/structured.py` + `sqlite_store.py`: `save_transactions` (idempotent — dedup on `id`),
+  `get_transactions(start?, end?, category?, account?)`, `save_account`/`get_accounts`. Amount stored as
+  TEXT (exact Decimal). Raw SQL stays in `sqlite_store.py`.
+- [ ] `__main__.py`: `python -m jarvis import <file.csv|file.ofx>` → source.load → save (reports counts).
+- [ ] pyproject += `ofxtools`; approved-deps += `ofxtools`; boundary test: `ofxtools` only under `finance/`.
 
-**Verification:** `tests/test_service.py` — with a **faked core**, each method returns the right result
-type AND appends exactly one signal stamped `source`. `tests/test_cli.py` updated to the facade path,
-asserting the same observable output. Full suite green; `ruff` clean.
-**Files:** `jarvis/results.py`, `jarvis/service.py`, `jarvis/cli.py`, `tests/test_service.py`,
-`tests/test_cli.py` (+ signal-emission tests updated). **Scope:** L.
-**Commit:** `feat(service): JarvisService facade; refactor CLI onto it (no behavior change)`
+**Verification:** `test_finance_store.py` (round-trip + idempotent re-import inserts each row once);
+`test_finance_sources.py` (CSV + OFX fixture → Decimal amounts, correct signs, no network). Full suite
+green; `ruff` clean.
+**Files:** `finance/{__init__,transaction}.py`, `finance/sources/{__init__,base,csv_source,ofx_source}.py`,
+`stores/structured.py`, `stores/sqlite_store.py`, `__main__.py`, `pyproject.toml`, tests. **Scope:** L.
+**Commit:** `feat(finance): transaction model + local CSV/OFX import into the structured store`
 
-### ▸ Checkpoint: one code path
-- [ ] CLI runs entirely through `JarvisService`; signals emit once per interaction with `source="cli"`.
+### ▸ Checkpoint: real data in, locally
+- [ ] Importing a bank export yields normalized, deduped Decimal transactions in SQLite; nothing left the machine.
 
-### Slice 2 — UI shell over the facade  [Flet — CONFIRMED]
-**Source-driven first:** verify the current **Flet** API for the pinned version (`ft.app`/`Page`, a
-scrolling `ListView`/`Column` of `Card`s, a chat `TextField` + send, `page.update()` model).
-
+### Slice 2 — Deterministic finance engine  [the proof: no LLM on the math path]
 **Acceptance:**
-- [ ] (decided) UI framework is **Flet**; our-own-web-UI fallback kept open but not built now.
-- [ ] `pyproject` += `flet` (pinned 0.80.x); approved-deps set += `flet`; boundary test: `flet` imported
-  only under `jarvis/ui/`.
-- [ ] `jarvis/ui/feed.py`: a `Card`/`Feed` model + render; `post_card(card)` appends to the feed
-  (the receive surface Phase 5 will push into — **no generation here**).
-- [ ] `jarvis/ui/app.py`: Flet window with (a) a **chat view** (input + message list) and (b) the
-  **Jarvis feed** (scrolling cards). On launch it renders **today's briefing as a card** via
-  `service.briefing()`. Sending a chat message calls `service.ask()` and renders the answer.
-- [ ] `jarvis/__main__.py`: `python -m jarvis ui` builds `JarvisService(source="gui")` + launches the app.
+- [ ] `finance/engine.py` (pure; imports **no** LLM): `spending_by_category(txns, start, end)`,
+  `spending_by_period(txns, period)`, `total_spending(txns, start, end)`, `net_worth(accounts)`,
+  `period_over_period(...) -> (delta, pct)`, `recurring_charges(txns)`, `budget_vs_actual(txns, budgets)`.
+  Every return is a `Decimal` (or a struct of Decimals).
+- [ ] `finance/transaction.py` += `Budget(category, limit: Decimal, period)` + `BudgetStatus`/`Recurring`.
+- [ ] `stores`: `save_budget`/`get_budgets` (for slice 4 surfacing; table here).
+- [ ] Boundary test: `engine.py` imports no `llm`/`ollama` (structural proof of the absolute constraint).
 
-**Verification:** `tests/test_ui_feed.py` — the pure feed/card model + the view-model dispatch
-(message → `service.ask` → card) tested with a **faked facade, without launching Flet**; `post_card`
-appends. Manual: `python -m jarvis ui` shows the window, the briefing card, and working chat.
-**Files:** `pyproject.toml`, `jarvis/ui/{__init__,app,feed}.py`, `jarvis/__main__.py`,
-`tests/test_ui_feed.py`, `tests/test_boundaries.py`. **Scope:** L.
-**Commit:** `feat(ui): desktop GUI shell over the facade (chat + Jarvis feed)`
+**Verification:** `test_finance_engine.py` — every function against **fixture transactions** with the
+**LLM absent**; assert exact Decimal values; reproducibility (same fixtures → identical figures);
+recurring detection on a crafted cadence; budget-vs-actual math. **Files:** `finance/engine.py`,
+`finance/transaction.py`, `stores/*`, `tests/test_finance_engine.py`, `tests/test_boundaries.py`. **Scope:** L.
+**Commit:** `feat(finance): deterministic Tier-0 finance engine (no LLM on the math path)`
 
-### Slice 3 — Shortcut buttons
+### Slice 3 — Categorization (rules + LLM fallback; correctable)
 **Acceptance:**
-- [ ] Buttons in `ui/app.py`: **Briefing**, **Today's calendar**, **Markets/News/HN** (a preset
-  `service.ask`), **Add goal** (input → `service.add_goal`). Each calls a facade method and renders the
-  result into the feed/chat (calendar → a card listing today's events; goal → a confirmation card).
-- [ ] Button→action dispatch is a small pure mapping (testable without Flet).
+- [ ] `finance/categorize.py`: a fixed category set; deterministic merchant→category rules; an override
+  store lookup. For an UNKNOWN merchant, the LLM classifies the merchant **string** into the set (JSON-
+  constrained, like the router) — never touches an amount. Precedence: override > rule > LLM > uncategorized.
+- [ ] `stores`: `save_category_override(merchant, category)` / `get_category_overrides()`; a `:recat`
+  correction applies the override AND updates stored transactions for that merchant (persists).
+- [ ] Import (slice 1) now categorizes on ingest via this module.
 
-**Verification:** `tests/test_ui_feed.py` extended — each shortcut invokes the right facade method and
-posts the expected card (faked facade). Manual: each button works and shows results.
-**Files:** `jarvis/ui/app.py`, `tests/test_ui_feed.py`. **Scope:** M.
-**Commit:** `feat(ui): shortcut buttons for common actions`
+**Verification:** `test_categorize.py` — rule hit; **override beats rule**; unknown → **fake LLM**
+classifies (asserts the LLM saw only the merchant string, no amount); a correction persists and re-
+categorizes. **Files:** `finance/categorize.py`, `stores/*`, `cli.py`, `tests/test_categorize.py`. **Scope:** M.
+**Commit:** `feat(finance): deterministic categorization with an LLM fallback for unknown merchants`
 
-### ▸ Checkpoint: UI HALF SHIPPABLE (pressure-release valve) — HARD STOP (user-confirmed)
-- [ ] Chat + feed (briefing card) + shortcuts all work **end-to-end** over the facade; CLI unchanged;
-  tests green. **Honor this as a real stop:** the text GUI must work before voice starts — do NOT slide
-  straight into STT. **Decision point:** proceed to voice (4–5), or ship the UI half now as the milestone.
-
-### Slice 4 — STT (push-to-talk voice input)
-**Source-driven first:** verify `faster-whisper` `WhisperModel(size).transcribe(...)` + model name
-(`large-v3-turbo`) and `sounddevice` capture against current docs.
-
+### Slice 4 — Finance Q&A + briefing integration
 **Acceptance:**
-- [ ] `pyproject` += `faster-whisper`, `sounddevice`, `numpy`; approved-deps += them; boundary test:
-  these imported only under `jarvis/voice/`.
-- [ ] `jarvis/voice/stt.py`: `SpeechToText` (ABC) + `FasterWhisperSTT` (the ONLY faster-whisper importer);
-  `transcribe(audio) -> str`. Model size from `config`.
-- [ ] `jarvis/voice/audio.py`: push-to-talk recorder (`sounddevice`) — capture mic audio while held.
-- [ ] `jarvis/voice/loop.py`: `record -> stt.transcribe -> service.ask -> render text` (TTS in Slice 5).
-- [ ] `jarvis/__main__.py`: `python -m jarvis voice` runs the push-to-talk loop (text out for now).
-- [ ] `config`: STT model size (default `large-v3-turbo`).
+- [ ] `finance/qa.py`: LLM parses the question → `FinanceQuery{metric, category?, period?}` (JSON schema,
+  validated); the **engine** computes from `get_transactions(filtered)`; the LLM **phrases** the exact
+  computed figure (given the number — it does not recompute).
+- [ ] `service.py`: `finance_answer(question) -> str` (emits a metadata-only signal — no amounts).
+  `cli.py`: `:spend <q>` / `:accounts` / `:budget`; a GUI finance shortcut (Phase 3 surface).
+- [ ] Briefing: a deterministic finance line (e.g. month-to-date spend + top category) assembled by the
+  engine, phrased by the LLM, presented as computed-from-my-data.
 
-**Verification:** `tests/test_voice_loop.py` — `record→stt→facade.ask` wired with a **fake STT** + faked
-facade (no audio/models); asserts the transcript enters `service.ask` and the answer is returned.
-`tests/test_stt.py` `@integration` — real `faster-whisper` transcribes a tiny fixed WAV to the expected
-text; **skips** when the model/audio is absent. Manual: push-to-talk asks a real question.
-**Files:** `pyproject.toml`, `jarvis/voice/{__init__,stt,audio,loop}.py`, `jarvis/__main__.py`,
-`jarvis/config.py`, `tests/test_voice_loop.py`, `tests/test_stt.py`, `tests/test_boundaries.py`. **Scope:** L.
-**Commit:** `feat(voice): push-to-talk STT into the pipeline`
+**Verification:** `test_finance_qa.py` — with a **fake LLM**, parse→engine→phrase; assert the figure in
+the answer equals the **engine's** output (no model-invented number) and the engine ran with no LLM;
+briefing includes the finance line. **Files:** `finance/qa.py`, `service.py`, `cli.py`, `briefing.py`,
+`tests/test_finance_qa.py`. **Scope:** M.
+**Commit:** `feat(finance): finance Q&A + briefing (engine computes, LLM only phrases)`
 
-### Slice 5 — TTS + full listen→answer→speak loop
-**Source-driven first:** verify the current `piper` Python/CLI invocation + voice model
-(`en_US-lessac-high`) and playback.
+### ▸ Checkpoint: Phase 4 complete (local import → engine → categorize → ask/brief)
+- [ ] Numbers verifiably from the engine; LLM never on the math path (boundary + unit proof); reads-only,
+  no advice. Proceed `/test` → `/review` → `/code-simplify` → `/ship`, recording learnings to DECISIONS.
 
+### Slice 5 — Plaid source  [OQ1: opt-in automation behind the same interface]
+**Source-driven first:** verify current Plaid sandbox/production tiers, `/transactions/sync`, the
+`plaid-python` client, and the auth/access-token flow against current Plaid docs.
 **Acceptance:**
-- [ ] `pyproject` += `piper-tts`; approved-deps += it; boundary test: `piper` only under `jarvis/voice/`.
-- [ ] `jarvis/voice/tts.py`: `TextToSpeech` (ABC) + `PiperTTS` (the ONLY piper importer);
-  `speak(text)` synthesizes + plays locally. Voice/model from `config`. (Kokoro is a future swap.)
-- [ ] `jarvis/voice/loop.py`: full `record -> transcribe -> service.ask -> tts.speak`.
-- [ ] `config`: TTS voice/model.
+- [ ] `finance/sources/plaid_source.py`: `PlaidSource` (the ONLY plaid importer, boundary-guarded) with
+  the same `load() -> (transactions, accounts)` contract — the engine is unchanged. Normalizes Plaid
+  transactions/accounts to the Decimal model (signs correct).
+- [ ] `config`: Plaid `client_id`/`secret`/`access_token` via `.env` (git-ignored, never committed,
+  redacted from errors). `__main__.py`: `import --plaid` (or a `plaid-sync`) path through the source.
+- [ ] pyproject += `plaid-python`; approved-deps += it; boundary guard: `plaid` only under `finance/`.
+- [ ] Docs: a short Plaid setup note (create app, sandbox vs production, obtain an access token).
 
-**Verification:** `tests/test_voice_loop.py` updated — a **fake TTS** asserts the answer text is spoken
-after `service.ask`. `tests/test_tts.py` `@integration` — real Piper produces non-empty audio for a
-short string; **skips** when the model is absent. Manual: full spoken loop (speak → hear the answer).
-**Files:** `pyproject.toml`, `jarvis/voice/{tts,loop}.py`, `jarvis/config.py`, `tests/test_voice_loop.py`,
-`tests/test_tts.py`, `tests/test_boundaries.py`. **Scope:** M.
-**Commit:** `feat(voice): local TTS; full listen-answer-speak loop`
-
-### ▸ Checkpoint: Phase 3 complete
-- [ ] UI (chat + feed + shortcuts) and voice (push-to-talk → STT → pipeline → TTS) both work; CLI
-  unchanged; signals captured for all modalities; audio/private data stay local (boundary check); offline
-  tests green, STT/TTS integration gated. Proceed `/test` → `/review` → `/code-simplify` → `/ship`,
-  recording learnings to `docs/DECISIONS.md`.
+**Verification:** `test_plaid_source.py` — normalize a **fake Plaid API response** (no network) into the
+Decimal model; an `@integration` test gated on a configured token (skips like OAuth). Live verification
+(`/transactions/sync` against the user's Plaid item) is **PENDING the user's Plaid credentials**.
+**Files:** `finance/sources/plaid_source.py`, `config.py`, `__main__.py`, `pyproject.toml`, docs,
+`tests/test_plaid_source.py`, `tests/test_boundaries.py`. **Scope:** M.
+**Commit:** `feat(finance): Plaid transaction source behind the source interface (opt-in, gated)`
 
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| UI framework balloons / Flet pre-1.0 churn | High | Pin Flet; keep UI thin behind a view seam; ship the UI half (1–3) standalone; web fallback documented |
-| Voice stack (models/audio) drags the phase | High | Voice is a separate half (4–5); integration-gated + size in config; ship UI half if voice slips |
-| A front-end reimplements core logic | High | Single `JarvisService`; boundary tests confine flet/voice libs; no business logic in ui/ or voice/ |
-| Audio device variability across machines | Med | `sounddevice` (cross-platform); STT/TTS tests gated/skipped when no device/model (like OAuth) |
-| Model weights download = perceived egress | Med | One-time public-weight fetch (documented, pinned); audio/transcripts never leave; assert no data egress |
-| CLI refactor regresses behavior | Med | Facade returns data; CLI tests assert unchanged observable output; full suite green before commit |
-| Smuggling Phase 5 in (autonomous cards) | Med | Feed is receive/display only (`post_card`); NO generation/ranking/reflection in Phase 3 |
+| LLM computes/estimates a figure (hallucinated money) | Critical (harm) | Engine is pure + imports no LLM (boundary test); Q&A asserts the answer figure == engine output; LLM only parses/phrases |
+| Float money rounding errors | High | `Decimal` everywhere; stored as TEXT; engine sums Decimals; asserted exact in tests |
+| Re-import duplicates transactions | High | Deterministic `id` = hash(account,date,amount,merchant); dedup on conflict; idempotency test |
+| Financial data leaks to logs / a third party | High | Local import (no egress); signals metadata-only (no amounts); redact errors; Plaid (if any) confined + token-gated |
+| OFX/bank-CSV format variance | Med | `ofxtools` (standards-based) for OFX; CSV mapping configurable; fixtures for both; source behind interface |
+| Scope creep into advice / money movement | Med | Hard Never list (reads/tracks only; facts not advice); enforced in phrasing prompts + review |
+| Plaid balloons the phase | Med | Plaid is a DEFERRED optional slice; import-first is the complete local phase |
 
-## Open Questions — all RESOLVED with the user
-- **OQ1 (UI framework)** — **Flet** (confirmed); our-own web UI kept as a later fallback.
-- OQ2 STT — faster-whisper `large-v3-turbo` (size in config). OQ3 TTS — Piper baseline, Kokoro swap later.
-  OQ4 activation — push-to-talk (wake-word deferred). OQ5 split — UI half independently shippable; the
-  Slice-3 checkpoint is a hard stop. All verified per slice via source-driven-development.
+## Open Questions — RESOLVED with the user
+- **OQ1 (data source)** — **import-first baseline + Plaid this phase** (both, behind one source
+  interface; engine source-agnostic). Import is the local everyday path; Plaid is opt-in automation,
+  confined + token-gated. Plaid's live verification needs the user's Plaid credentials.
+- OQ2 categorization — rules + LLM fallback (classification of the merchant string only). OQ3 budgets —
+  include (deterministic budget-vs-actual). Both confirmed.
 
 ## Parallelization
-- Slice 1 is the barrier (everything depends on the facade).
-- After Slice 1: UI half (2→3) and voice half (4→5) are independent tracks; both touch `__main__.py` +
-  the facade surface, so serialize edits there. The UI half is the shippable milestone if voice slips.
+- Slice 1 is the barrier (no engine without data). Slices 2 (engine) and 3 (categorize) both depend only
+  on Slice 1 and could parallelize across sessions; both touch the store, so serialize there. Slice 4
+  needs 2 + 3 + the Phase 3 facade/briefing. Slice 5 (Plaid) plugs into the source interface independently.
