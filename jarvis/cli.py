@@ -304,6 +304,16 @@ def _handle_command(text: str, service: JarvisService) -> None:
         for s in suggestions:
             print(f"  - {s.content}")
             print(f"    why: {s.why}")
+    elif command == "rate":
+        sid, _, result = argument.partition(" ")
+        if not sid.strip() or not result.strip():
+            print("usage: :rate <id> <acted|dismissed|ignored|more_like_this|less_like_this>")
+            return
+        try:
+            service.record_outcome(sid.strip(), result.strip())
+            print(f"recorded: {result.strip()}")
+        except ValueError as exc:
+            print(str(exc))
     elif command == "reflect":
         print(f"reflected: {service.reflect(force=True)} insight(s)")
     elif command == "profile":

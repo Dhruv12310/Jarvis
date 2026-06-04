@@ -59,6 +59,15 @@ class Suggestion:
 
 
 @dataclass(frozen=True)
+class Outcome:
+    """The user's reaction to a surfaced suggestion (Core §5.5) - feedback that closes the loop."""
+
+    suggestion_id: str
+    ts: datetime
+    result: str  # acted | dismissed | ignored | more_like_this | less_like_this
+
+
+@dataclass(frozen=True)
 class ReflectionState:
     last_seq: int  # signal-log seq processed by the last reflection (monotonic baseline)
     last_reflection_at: datetime | None
@@ -193,3 +202,11 @@ class StructuredStore(ABC):
     @abstractmethod
     def get_recent_suggestions(self, *, since: datetime) -> list[Suggestion]:
         """Return suggestions surfaced at/after `since`, newest first (for cooldown/novelty)."""
+
+    @abstractmethod
+    def save_outcome(self, outcome: Outcome) -> None:
+        """Persist a feedback outcome on a suggestion (Core §7.5)."""
+
+    @abstractmethod
+    def get_outcomes(self, *, since: datetime | None = None) -> list[Outcome]:
+        """Return outcomes (optionally only at/after `since`), newest first."""

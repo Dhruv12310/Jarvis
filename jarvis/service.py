@@ -24,7 +24,7 @@ from jarvis.knowledge.pipeline import Knowledge
 from jarvis.memory.record import MemoryRecord
 from jarvis.memory.store import MemoryStore
 from jarvis.orchestrator import Orchestrator
-from jarvis.proactivity import suggest
+from jarvis.proactivity import feedback, suggest
 from jarvis.proactivity import user_model as um
 from jarvis.proactivity.candidate import EngineState, Fetched
 from jarvis.proactivity.generators import collector_queries
@@ -34,7 +34,7 @@ from jarvis.proactivity.user_model import UserModel
 from jarvis.results import AgendaResult, AskResult
 from jarvis.signals.event import SignalEvent
 from jarvis.signals.log import SignalLog
-from jarvis.stores.structured import Goal, StructuredStore, Suggestion, Watch
+from jarvis.stores.structured import Goal, Outcome, StructuredStore, Suggestion, Watch
 
 # What the briefing pulls from the Phase-1 knowledge pipeline. Fixed for Phase 2/3; goal-derived
 # digests are a later refinement.
@@ -338,6 +338,20 @@ class JarvisService:
                 since=now - timedelta(hours=lookback)
             ),
         )
+
+    def record_outcome(self, suggestion_id: str, result: str) -> Outcome:
+        """Record the user's reaction to a surfaced suggestion (Core §7.5). Persisted now; the
+        learning that consumes it (user model + ranker weights) lands in the next slice. The signal
+        carries the result enum only - never the suggestion's content."""
+        with self._signal("outcome") as sig:
+            if result not in feedback.RESULTS:
+                raise ValueError(
+                    f"unknown outcome '{result}'; one of {', '.join(feedback.RESULTS)}"
+                )
+            outcome = Outcome(suggestion_id=suggestion_id, ts=datetime.now(UTC), result=result)
+            self._store.save_outcome(outcome)
+            sig["result"] = result
+            return outcome
 
     def _fetch(self, name: str, term: str) -> list:
         """Fetch a connector's items for a public term; a missing/failing source is empty."""

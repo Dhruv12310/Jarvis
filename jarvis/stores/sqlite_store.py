@@ -18,6 +18,7 @@ from jarvis.signals.event import SignalEvent
 from jarvis.stores.structured import (
     Goal,
     Note,
+    Outcome,
     ReflectionState,
     StructuredStore,
     Suggestion,
@@ -136,6 +137,16 @@ CREATE TABLE IF NOT EXISTS suggestions (
 )
 """
 
+# Feedback outcomes (Core §5.5/§7.5): the user's reaction to a surfaced suggestion - the loop.
+_OUTCOMES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS outcomes (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    suggestion_id TEXT NOT NULL,
+    ts            TEXT NOT NULL,
+    result        TEXT NOT NULL
+)
+"""
+
 
 class SQLiteStructuredStore(StructuredStore):
     def __init__(self, db_path: Path | str) -> None:
@@ -155,6 +166,7 @@ class SQLiteStructuredStore(StructuredStore):
         self._conn.execute(_USER_MODEL_SCHEMA)
         self._conn.execute(_WATCHLIST_SCHEMA)
         self._conn.execute(_SUGGESTIONS_SCHEMA)
+        self._conn.execute(_OUTCOMES_SCHEMA)
         self._conn.commit()
 
     def save_note(self, content: str) -> Note:
@@ -429,6 +441,29 @@ class SQLiteStructuredStore(StructuredStore):
             (since.isoformat(),),
         ).fetchall()
         return [self._row_to_suggestion(row) for row in rows]
+
+    def save_outcome(self, outcome: Outcome) -> None:
+        self._conn.execute(
+            "INSERT INTO outcomes (suggestion_id, ts, result) VALUES (?, ?, ?)",
+            (outcome.suggestion_id, outcome.ts.isoformat(), outcome.result),
+        )
+        self._conn.commit()
+
+    def get_outcomes(self, *, since: datetime | None = None) -> list[Outcome]:
+        if since is None:
+            rows = self._conn.execute("SELECT * FROM outcomes ORDER BY ts DESC").fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM outcomes WHERE ts >= ? ORDER BY ts DESC", (since.isoformat(),)
+            ).fetchall()
+        return [
+            Outcome(
+                suggestion_id=row["suggestion_id"],
+                ts=datetime.fromisoformat(row["ts"]),
+                result=row["result"],
+            )
+            for row in rows
+        ]
 
     @staticmethod
     def _row_to_suggestion(row: sqlite3.Row) -> Suggestion:
