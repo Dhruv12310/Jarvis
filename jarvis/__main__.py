@@ -4,6 +4,7 @@ Usage:
     python -m jarvis              chat REPL
     python -m jarvis ui           desktop GUI (chat + Jarvis feed)
     python -m jarvis voice        push-to-talk voice loop (local STT + TTS)
+    python -m jarvis import <f>   import transactions from a local CSV/OFX/QFX file
     python -m jarvis selftest     run the Phase 0 Definition-of-Done self-test
     python -m jarvis calendar-auth  one-time Google Calendar OAuth (read-only)
 """
@@ -40,6 +41,29 @@ def main() -> int:
             launch(service)
         finally:
             store.close()
+        return 0
+    if args and args[0] == "import":
+        # Fully local: read a bank export, normalize, and store. No network, no LLM.
+        if len(args) < 2:
+            print("usage: python -m jarvis import <file.csv|file.ofx|file.qfx>")
+            return 1
+        from jarvis.config import config
+        from jarvis.finance.sources import source_for
+        from jarvis.stores.sqlite_store import SQLiteStructuredStore
+
+        config.ensure_dirs()
+        transactions, accounts = source_for(args[1]).load()
+        store = SQLiteStructuredStore(config.db_path)
+        try:
+            added = store.save_transactions(transactions)
+            for account in accounts:
+                store.save_account(account)
+        finally:
+            store.close()
+        print(
+            f"imported {added} new transaction(s) from {len(transactions)} row(s); "
+            f"{len(accounts)} account(s)"
+        )
         return 0
     if args and args[0] == "voice":
         # Voice libs stay under jarvis.voice (boundary-guarded). STT + TTS are local.

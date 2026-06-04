@@ -23,6 +23,8 @@ dependencies = [
     "sounddevice>=0.5",
     "numpy>=1.26",
     "piper-tts>=1.2",
+    # Finance (Phase 4): local OFX/QFX import (zero-dep, stdlib-only), confined to jarvis/finance/.
+    "ofxtools>=0.9",
 ]
 
 [project.optional-dependencies]

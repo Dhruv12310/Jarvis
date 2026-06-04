@@ -9,9 +9,11 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 
+from jarvis.finance.transaction import Account, Transaction
 from jarvis.signals.event import SignalEvent
 from jarvis.stores.structured import Goal, Note, StructuredStore
 
@@ -47,6 +49,28 @@ CREATE TABLE IF NOT EXISTS signals (
 )
 """
 
+# Finance (Core spec 5.2). Money is stored as TEXT (the exact Decimal string), never REAL/float.
+# id is a deterministic hash of the row's identifying fields -> idempotent re-import.
+_TRANSACTIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS transactions (
+    id       TEXT PRIMARY KEY,
+    date     TEXT NOT NULL,
+    amount   TEXT NOT NULL,
+    merchant TEXT NOT NULL,
+    category TEXT NOT NULL,
+    account  TEXT NOT NULL
+)
+"""
+
+_ACCOUNTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS accounts (
+    id      TEXT PRIMARY KEY,
+    name    TEXT NOT NULL,
+    type    TEXT NOT NULL,
+    balance TEXT NOT NULL
+)
+"""
+
 
 class SQLiteStructuredStore(StructuredStore):
     def __init__(self, db_path: Path | str) -> None:
@@ -58,6 +82,8 @@ class SQLiteStructuredStore(StructuredStore):
         self._conn.execute(_SCHEMA)
         self._conn.execute(_GOALS_SCHEMA)
         self._conn.execute(_SIGNALS_SCHEMA)
+        self._conn.execute(_TRANSACTIONS_SCHEMA)
+        self._conn.execute(_ACCOUNTS_SCHEMA)
         self._conn.commit()
 
     def save_note(self, content: str) -> Note:
@@ -137,6 +163,61 @@ class SQLiteStructuredStore(StructuredStore):
         self._conn.commit()
         return updated
 
+    def save_transactions(self, transactions: list[Transaction]) -> int:
+        # INSERT OR IGNORE dedups on the deterministic id -> re-importing overlap is idempotent.
+        before = self._conn.total_changes
+        self._conn.executemany(
+            "INSERT OR IGNORE INTO transactions (id, date, amount, merchant, category, account) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (t.id, t.date.isoformat(), str(t.amount), t.merchant, t.category, t.account)
+                for t in transactions
+            ],
+        )
+        self._conn.commit()
+        return self._conn.total_changes - before
+
+    def get_transactions(
+        self,
+        *,
+        start: date | None = None,
+        end: date | None = None,
+        category: str | None = None,
+        account: str | None = None,
+    ) -> list[Transaction]:
+        clauses, params = [], []
+        if start is not None:
+            clauses.append("date >= ?")
+            params.append(start.isoformat())
+        if end is not None:
+            clauses.append("date <= ?")
+            params.append(end.isoformat())
+        if category is not None:
+            clauses.append("category = ?")
+            params.append(category)
+        if account is not None:
+            clauses.append("account = ?")
+            params.append(account)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self._conn.execute(
+            f"SELECT * FROM transactions {where} ORDER BY date, id", params
+        ).fetchall()
+        return [self._row_to_transaction(row) for row in rows]
+
+    def save_account(self, account: Account) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO accounts (id, name, type, balance) VALUES (?, ?, ?, ?)",
+            (account.id, account.name, account.type, str(account.balance)),
+        )
+        self._conn.commit()
+
+    def get_accounts(self) -> list[Account]:
+        rows = self._conn.execute("SELECT * FROM accounts ORDER BY id").fetchall()
+        return [
+            Account(id=r["id"], name=r["name"], type=r["type"], balance=Decimal(r["balance"]))
+            for r in rows
+        ]
+
     def save_signal(self, event: SignalEvent) -> None:
         self._conn.execute(
             "INSERT INTO signals (id, ts, kind, payload, session_id) VALUES (?, ?, ?, ?, ?)",
@@ -168,6 +249,17 @@ class SQLiteStructuredStore(StructuredStore):
             kind=row["kind"],
             payload=json.loads(row["payload"]),
             session_id=row["session_id"],
+        )
+
+    @staticmethod
+    def _row_to_transaction(row: sqlite3.Row) -> Transaction:
+        return Transaction(
+            id=row["id"],
+            date=date.fromisoformat(row["date"]),
+            amount=Decimal(row["amount"]),  # exact decimal, never float
+            merchant=row["merchant"],
+            category=row["category"],
+            account=row["account"],
         )
 
     @staticmethod

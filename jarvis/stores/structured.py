@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
+from jarvis.finance.transaction import Account, Transaction
 from jarvis.signals.event import SignalEvent
 
 
@@ -63,6 +64,29 @@ class StructuredStore(ABC):
         self, goal_id: int, *, status: str | None = None, progress: float | None = None
     ) -> Goal:
         """Set a goal's status and/or progress; return it. Raise LookupError if absent."""
+
+    @abstractmethod
+    def save_transactions(self, transactions: list[Transaction]) -> int:
+        """Persist transactions idempotently (dedup on id); return the number newly inserted."""
+
+    @abstractmethod
+    def get_transactions(
+        self,
+        *,
+        start: date | None = None,
+        end: date | None = None,
+        category: str | None = None,
+        account: str | None = None,
+    ) -> list[Transaction]:
+        """Return transactions matching the filters, oldest first."""
+
+    @abstractmethod
+    def save_account(self, account: Account) -> None:
+        """Insert or replace an account (by id)."""
+
+    @abstractmethod
+    def get_accounts(self) -> list[Account]:
+        """Return all accounts."""
 
     @abstractmethod
     def save_signal(self, event: SignalEvent) -> None:

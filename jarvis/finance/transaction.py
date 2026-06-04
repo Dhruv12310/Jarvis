@@ -1,0 +1,37 @@
+"""Finance value objects. Money is `decimal.Decimal` (never float) so totals stay exact.
+
+Amounts are signed (OFX convention): negative = outflow/spend, positive = inflow. A transaction `id`
+is a deterministic hash of its identifying fields so re-importing an overlapping bank export inserts
+each row exactly once.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+
+
+@dataclass(frozen=True)
+class Transaction:
+    id: str
+    date: date
+    amount: Decimal  # signed: negative = outflow/spend, positive = inflow
+    merchant: str
+    category: str  # assigned category, or "uncategorized"
+    account: str
+
+
+@dataclass(frozen=True)
+class Account:
+    id: str
+    name: str
+    type: str  # checking|savings|credit|...
+    balance: Decimal
+
+
+def make_id(account: str, txn_date: date, amount: Decimal, merchant: str) -> str:
+    """Deterministic id from the identifying fields -> idempotent import (same row -> same id)."""
+    raw = f"{account}|{txn_date.isoformat()}|{amount}|{merchant}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]

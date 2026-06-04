@@ -7,6 +7,7 @@ These turn the project's invariants into automated tests:
   - the Google client libs imported only under calendar/
   - the Flet UI toolkit imported only under ui/
   - the local voice libs (STT/TTS/audio) imported only under voice/
+  - the finance source libs (ofxtools/plaid) imported only under finance/
   - connectors do not import one another
   - declared runtime dependencies stay within the approved set
 """
@@ -30,6 +31,7 @@ _APPROVED_RUNTIME_DEPS = {
     "sounddevice",
     "numpy",
     "piper-tts",
+    "ofxtools",
 }
 _SQL_ALLOWED = {"sqlite_store.py", "sqlite_cache.py"}
 
@@ -47,6 +49,9 @@ _FLET_IMPORT = re.compile(r"^\s*(import|from)\s+flet\b", re.MULTILINE)
 _VOICE_IMPORT = re.compile(
     r"^\s*(import|from)\s+(faster_whisper|sounddevice|piper)\b", re.MULTILINE
 )
+# The OFX parser (and later the Plaid client) stay under finance/ - the source seam, so the engine
+# and the rest of the app never depend on a parsing/aggregator lib.
+_FINANCE_SOURCE_IMPORT = re.compile(r"^\s*(import|from)\s+(ofxtools|plaid)\b", re.MULTILINE)
 
 
 def _py_files_excluding(name: str) -> list[Path]:
@@ -149,6 +154,19 @@ def test_voice_guard_catches_all_three_libs():
     ):
         assert _VOICE_IMPORT.search(line), f"guard failed to flag: {line!r}"
     assert not _VOICE_IMPORT.search("import numpy as np")  # numpy is intentionally unrestricted
+
+
+def test_finance_source_libs_imported_only_under_finance():
+    # ofxtools/plaid stay behind the TransactionSource seam (under finance/), so the engine never
+    # depends on a parsing or third-party aggregator lib.
+    offenders = [
+        str(rel)
+        for path in _JARVIS.rglob("*.py")
+        if "finance" not in (rel := path.relative_to(_JARVIS)).parts
+        and _FINANCE_SOURCE_IMPORT.search(path.read_text(encoding="utf-8"))
+    ]
+
+    assert offenders == [], f"finance source libs imported outside finance/: {offenders}"
 
 
 def test_connectors_do_not_import_each_other():
