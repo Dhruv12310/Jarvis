@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from jarvis.finance.transaction import Account, Transaction
+from jarvis.finance.transaction import Account, Budget, Transaction
 from jarvis.signals.event import SignalEvent
 
 
@@ -87,6 +87,14 @@ class StructuredStore(ABC):
     @abstractmethod
     def get_accounts(self) -> list[Account]:
         """Return all accounts."""
+
+    @abstractmethod
+    def save_budget(self, budget: Budget) -> None:
+        """Insert or replace a budget (by category)."""
+
+    @abstractmethod
+    def get_budgets(self) -> list[Budget]:
+        """Return all budgets."""
 
     @abstractmethod
     def save_signal(self, event: SignalEvent) -> None:

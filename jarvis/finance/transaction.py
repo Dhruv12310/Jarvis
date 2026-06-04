@@ -31,6 +31,30 @@ class Account:
     balance: Decimal
 
 
+@dataclass(frozen=True)
+class Budget:
+    category: str
+    limit: Decimal
+    period: str  # informational label, e.g. "monthly"
+
+
+@dataclass(frozen=True)
+class BudgetStatus:
+    category: str
+    limit: Decimal
+    actual: Decimal
+    remaining: Decimal  # limit - actual (negative when over)
+    over: bool
+
+
+@dataclass(frozen=True)
+class Recurring:
+    merchant: str
+    amount: Decimal  # typical (median) charge
+    count: int
+    cadence: str  # weekly|biweekly|monthly
+
+
 def make_id(account: str, txn_date: date, amount: Decimal, merchant: str) -> str:
     """Deterministic id from the identifying fields -> idempotent import (same row -> same id)."""
     raw = f"{account}|{txn_date.isoformat()}|{amount}|{merchant}"

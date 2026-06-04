@@ -169,6 +169,15 @@ def test_finance_source_libs_imported_only_under_finance():
     assert offenders == [], f"finance source libs imported outside finance/: {offenders}"
 
 
+def test_finance_engine_imports_no_llm():
+    # The absolute Phase 4 rule, made structural: the deterministic engine never imports the LLM, so
+    # it cannot possibly compute, estimate, or infer a financial figure via a model.
+    engine = (_JARVIS / "finance" / "engine.py").read_text(encoding="utf-8")
+    assert not re.search(r"^\s*(import|from)\s+.*\b(llm|ollama)\b", engine, re.MULTILINE), (
+        "the finance engine must not import the LLM - every figure is deterministic code"
+    )
+
+
 def test_connectors_do_not_import_each_other():
     connectors_dir = _JARVIS / "connectors"
     modules = {

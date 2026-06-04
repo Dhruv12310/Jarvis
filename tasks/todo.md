@@ -7,13 +7,13 @@ Reads/tracks only — never moves money, never gives advice. (Phases 0–3 shipp
 
 ---
 
-## [ ] Slice 1 — Model + finance store + CSV/OFX import  ·  `feat(finance): transaction model + local CSV/OFX import into the structured store`   [OQ1: import + Plaid, both built]
-- [ ] (source-driven) verify `ofxtools` parse API + a bank CSV shape
-- [ ] `finance/transaction.py` — `Transaction(id, date, amount: Decimal, merchant, category, account)` + `Account(...)`; money is Decimal
-- [ ] `finance/sources/` — `TransactionSource` ABC `load()`; `CsvSource` (stdlib), `OfxSource` (only ofxtools importer); signs normalized; `id` = hash(account,date,amount,merchant)
-- [ ] `stores` — `save_transactions` (idempotent dedup on id), `get_transactions(start?,end?,category?,account?)`, accounts; amount stored as TEXT
-- [ ] `__main__.py` — `python -m jarvis import <file>`; pyproject += `ofxtools`; boundary guard: ofxtools only under `finance/`
-- [ ] Verify: `test_finance_store.py` (round-trip + idempotent re-import); `test_finance_sources.py` (CSV+OFX fixture → Decimal, signs); full suite green; ruff clean
+## [x] Slice 1 — Model + finance store + CSV/OFX import  ·  `feat(finance): transaction model + local CSV/OFX import into the structured store`   [OQ1: import + Plaid, both built]
+- [x] (source-driven) verified `ofxtools` parse API (OFXTree().parse->convert; trnamt/ledgerbal already Decimal)
+- [x] `finance/transaction.py` — `Transaction(id, date, amount: Decimal, merchant, category, account)` + `Account(...)` + `make_id`; money is Decimal
+- [x] `finance/sources/` — `TransactionSource` ABC `load()`; `CsvSource` (stdlib), `OfxSource` (only ofxtools importer); signs normalized; `id` = hash(account,date,amount,merchant)
+- [x] `stores` — `save_transactions` (idempotent INSERT OR IGNORE on id), `get_transactions(start?,end?,category?,account?)`, accounts; amount stored as TEXT
+- [x] `__main__.py` — `python -m jarvis import <file>`; pyproject += `ofxtools`; boundary guard: ofxtools (+plaid) only under `finance/`
+- [x] Verify: `test_finance_store.py` (round-trip + idempotent re-import + filters); `test_finance_sources.py` (CSV+OFX→Decimal, signs); import smoke (3 new→0); 203 green; ruff clean
 
 ### ▸ Checkpoint: real data in, locally
 

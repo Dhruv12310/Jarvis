@@ -13,7 +13,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from jarvis.finance.transaction import Account, Transaction
+from jarvis.finance.transaction import Account, Budget, Transaction
 from jarvis.signals.event import SignalEvent
 from jarvis.stores.structured import Goal, Note, StructuredStore
 
@@ -71,6 +71,14 @@ CREATE TABLE IF NOT EXISTS accounts (
 )
 """
 
+_BUDGETS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS budgets (
+    category TEXT PRIMARY KEY,
+    amount   TEXT NOT NULL,
+    period   TEXT NOT NULL
+)
+"""
+
 
 class SQLiteStructuredStore(StructuredStore):
     def __init__(self, db_path: Path | str) -> None:
@@ -84,6 +92,7 @@ class SQLiteStructuredStore(StructuredStore):
         self._conn.execute(_SIGNALS_SCHEMA)
         self._conn.execute(_TRANSACTIONS_SCHEMA)
         self._conn.execute(_ACCOUNTS_SCHEMA)
+        self._conn.execute(_BUDGETS_SCHEMA)
         self._conn.commit()
 
     def save_note(self, content: str) -> Note:
@@ -215,6 +224,20 @@ class SQLiteStructuredStore(StructuredStore):
         rows = self._conn.execute("SELECT * FROM accounts ORDER BY id").fetchall()
         return [
             Account(id=r["id"], name=r["name"], type=r["type"], balance=Decimal(r["balance"]))
+            for r in rows
+        ]
+
+    def save_budget(self, budget: Budget) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO budgets (category, amount, period) VALUES (?, ?, ?)",
+            (budget.category, str(budget.limit), budget.period),
+        )
+        self._conn.commit()
+
+    def get_budgets(self) -> list[Budget]:
+        rows = self._conn.execute("SELECT * FROM budgets ORDER BY category").fetchall()
+        return [
+            Budget(category=r["category"], limit=Decimal(r["amount"]), period=r["period"])
             for r in rows
         ]
 
