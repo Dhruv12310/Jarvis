@@ -146,6 +146,55 @@ class Config:
         default_factory=lambda: float(os.environ.get("JARVIS_MARKET_MOVE_PCT", "3.0"))
     )
 
+    # Usefulness ranker (§7.2). Hand-set beta weights (learned in 5c); the threshold is
+    # ABSOLUTE and HIGH so abstention (show nothing) is the default. Caps are STRUCTURAL - no
+    # score can raise volume. quiet hours + the enable flag are the hard DND gate.
+    beta_goal: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_BETA_GOAL", "1.0"))
+    )
+    beta_urgency: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_BETA_URGENCY", "1.0"))
+    )
+    beta_interest: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_BETA_INTEREST", "1.0"))
+    )
+    beta_timing: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_BETA_TIMING", "0.3"))
+    )
+    beta_novelty: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_BETA_NOVELTY", "0.3"))
+    )
+    beta_fatigue: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_BETA_FATIGUE", "1.0"))
+    )
+    usefulness_threshold: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_USEFULNESS_THRESHOLD", "1.0"))
+    )
+    suggestions_per_window: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_SUGGESTIONS_PER_WINDOW", "3"))
+    )
+    suggestion_window_hours: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_SUGGESTION_WINDOW_HOURS", "24"))
+    )
+    per_category_cap: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_PER_CATEGORY_CAP", "1"))
+    )
+    entity_cooldown_hours: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_ENTITY_COOLDOWN_HOURS", "48"))
+    )
+    novelty_lambda: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_NOVELTY_LAMBDA", "0.02"))
+    )
+    quiet_hours_start: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_QUIET_HOURS_START", "22"))
+    )
+    quiet_hours_end: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_QUIET_HOURS_END", "7"))
+    )
+    proactivity_enabled: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_PROACTIVITY_ENABLED", "1") != "0"
+    )
+
     def ensure_dirs(self) -> None:
         """Create the data directories on demand. They are git-ignored and never committed."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)

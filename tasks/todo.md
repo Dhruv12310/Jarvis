@@ -17,12 +17,12 @@ does I/O. Abstention is the default; the frequency cap is structural.
 - [x] `config` — urgency_horizon_hours, stale_goal_days, budget_near_fraction, recurring_horizon_days
 - [x] Verify: `test_candidate_generators.py` (10 tests) — each fires + abstains; provenance reason/source_ids non-empty; dedup by entity_key; purity (no facade/HTTP/LLM imports). 294 passed, ruff clean
 
-## [ ] Slice 2 — Watchlist + collector generators  ·  `feat(proactivity): user-owned public watchlist and collector candidate generators (market/news/yc)`
-- [ ] `stores` — `Watchlist` CRUD (add/get/remove) + `watchlist(kind,value UNIQUE)` table (raw SQL in sqlite); symbols ∪ `config.market_watchlist` fallback
-- [ ] `cli.py` — `:watch add|list|rm`
-- [ ] `proactivity/generators.py` — collector generators (pure over `state.connector_items`): `market_move` (|change_pct| ≥ `market_move_pct`), `watched_news`/`yc_launch` (news/HN for watch topics)
-- [ ] `config` — `market_move_pct`
-- [ ] Verify: `test_watchlist_store.py` (round-trip) + collector generator cases; **boundary test: collector query terms are public watchlist only (no private text)**
+## [x] Slice 2 — Watchlist + collector generators  ·  `feat(proactivity): user-owned public watchlist and collector candidate generators (market/news/yc)` (869cb95)
+- [x] `stores` — `Watch` + `watchlist(kind,value)` table + add/get/remove CRUD (idempotent; raw SQL in sqlite)
+- [x] `service` — `add_watch` (symbols upper-cased) / `watchlist` / `remove_watch`, metadata-only signals; `cli :watch add|list|rm`
+- [x] `proactivity` — `Fetched(source,term,item)` + `Candidate.topics` + `EngineState.connector_items`; collector generators `market_move`/`watched_news`/`yc_launch` (pure over items); `collector_queries` pure (connector,term) builder
+- [x] `config` — `market_move_pct`
+- [x] Verify: `test_watchlist_store.py` round-trip; collector generator fire/abstain; **collector_queries emits only public watch terms**; facade upper-case + metadata-only. 299 passed, ruff clean
 
 ## [ ] Slice 3 — Features + ranker + gate (§7.2)  ·  `feat(proactivity): explainable usefulness ranking with abstention and a structural frequency cap`
 - [ ] `proactivity/features.py` — calibrated [0,1] monotone, PURE (no LLM/httpx/attention): `goal_relevance`, `urgency`, `interest_match` (max goal-linked `Interest.weight`; 0 for pure-freq), `timing_fit` (rhythms + config quiet-hours; no UserModel.dnd), `novelty`, `recent_interruption_penalty`
