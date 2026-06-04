@@ -111,6 +111,12 @@ def merge(
     return model
 
 
+def reinforce_interest(model, topic, goals, *, now, alpha, gamma) -> UserModel:
+    """Positive feedback on a topic: reuse the merge path so the §8 guard still holds - a
+    non-goal-linked (pure-frequency) topic's weight stays 0.0; only goal-linked rises."""
+    return _merge_interest(model, topic, goals, now=now, alpha=alpha, gamma=gamma)
+
+
 def suppress_interest(model: UserModel, topic: str, *, now: datetime, gamma: float) -> UserModel:
     """User correction: a topic I do not want amplified -> decay its weight + confidence."""
     interests = []

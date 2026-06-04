@@ -130,10 +130,19 @@ CREATE TABLE IF NOT EXISTS suggestions (
     content        TEXT NOT NULL,
     why            TEXT NOT NULL,
     source_ids     TEXT NOT NULL,
+    topics         TEXT NOT NULL,
     features       TEXT NOT NULL,
     score          REAL NOT NULL,
     surfaced       INTEGER NOT NULL,
     channel        TEXT NOT NULL
+)
+"""
+
+# Learned ranker weight multipliers (§7.5): one row of {feature: multiplier} tuned by feedback.
+_FEEDBACK_WEIGHTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS feedback_weights (
+    id   INTEGER PRIMARY KEY CHECK (id = 1),
+    data TEXT NOT NULL
 )
 """
 
@@ -167,6 +176,7 @@ class SQLiteStructuredStore(StructuredStore):
         self._conn.execute(_WATCHLIST_SCHEMA)
         self._conn.execute(_SUGGESTIONS_SCHEMA)
         self._conn.execute(_OUTCOMES_SCHEMA)
+        self._conn.execute(_FEEDBACK_WEIGHTS_SCHEMA)
         self._conn.commit()
 
     def save_note(self, content: str) -> Note:
@@ -417,8 +427,8 @@ class SQLiteStructuredStore(StructuredStore):
     def save_suggestion(self, suggestion: Suggestion) -> None:
         self._conn.execute(
             "INSERT OR REPLACE INTO suggestions (id, created_at, candidate_type, entity_key, "
-            "content, why, source_ids, features, score, surfaced, channel) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "content, why, source_ids, topics, features, score, surfaced, channel) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 suggestion.id,
                 suggestion.created_at.isoformat(),
@@ -427,6 +437,7 @@ class SQLiteStructuredStore(StructuredStore):
                 suggestion.content,
                 suggestion.why,
                 json.dumps(suggestion.source_ids),
+                json.dumps(suggestion.topics),
                 json.dumps(suggestion.features),
                 suggestion.score,
                 int(suggestion.surfaced),
@@ -441,6 +452,23 @@ class SQLiteStructuredStore(StructuredStore):
             (since.isoformat(),),
         ).fetchall()
         return [self._row_to_suggestion(row) for row in rows]
+
+    def get_suggestion(self, suggestion_id: str) -> Suggestion | None:
+        row = self._conn.execute(
+            "SELECT * FROM suggestions WHERE id = ?", (suggestion_id,)
+        ).fetchone()
+        return self._row_to_suggestion(row) if row else None
+
+    def get_feedback_weights(self) -> dict:
+        row = self._conn.execute("SELECT data FROM feedback_weights WHERE id = 1").fetchone()
+        return json.loads(row["data"]) if row else {}
+
+    def save_feedback_weights(self, weights: dict) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO feedback_weights (id, data) VALUES (1, ?)",
+            (json.dumps(weights),),
+        )
+        self._conn.commit()
 
     def save_outcome(self, outcome: Outcome) -> None:
         self._conn.execute(
@@ -475,6 +503,7 @@ class SQLiteStructuredStore(StructuredStore):
             content=row["content"],
             why=row["why"],
             source_ids=json.loads(row["source_ids"]),
+            topics=json.loads(row["topics"]),
             features=json.loads(row["features"]),
             score=row["score"],
             surfaced=bool(row["surfaced"]),

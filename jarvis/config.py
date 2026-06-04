@@ -194,6 +194,10 @@ class Config:
     proactivity_enabled: bool = field(
         default_factory=lambda: os.environ.get("JARVIS_PROACTIVITY_ENABLED", "1") != "0"
     )
+    # Feedback (§7.5/5c): learning rate for the per-feature ranker weight nudges.
+    feedback_lr: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_FEEDBACK_LR", "0.1"))
+    )
 
     def ensure_dirs(self) -> None:
         """Create the data directories on demand. They are git-ignored and never committed."""

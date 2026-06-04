@@ -29,13 +29,21 @@ def usefulness(candidate, state) -> tuple[float, dict]:
     interests = getattr(state.user_model, "interests", []) if state.user_model else []
     rhythms = getattr(state.user_model, "rhythms", []) if state.user_model else []
     quiet = (config.quiet_hours_start, config.quiet_hours_end)
+    # Learned multipliers (§7.5/5c) tune the hand-set base weights; default 1.0 = no learning yet.
+    w = state.feedback_weights or {}
     contributions = {
-        "goal": config.beta_goal * F.goal_relevance(candidate, state.goals),
+        "goal": config.beta_goal * w.get("goal", 1.0) * F.goal_relevance(candidate, state.goals),
         "urgency": config.beta_urgency
+        * w.get("urgency", 1.0)
         * F.urgency(candidate, horizon_hours=config.urgency_horizon_hours),
-        "interest": config.beta_interest * F.interest_match(candidate, interests),
-        "timing": config.beta_timing * F.timing_fit(state.now, rhythms, quiet_hours=quiet),
+        "interest": config.beta_interest
+        * w.get("interest", 1.0)
+        * F.interest_match(candidate, interests),
+        "timing": config.beta_timing
+        * w.get("timing", 1.0)
+        * F.timing_fit(state.now, rhythms, quiet_hours=quiet),
         "novelty": config.beta_novelty
+        * w.get("novelty", 1.0)
         * F.novelty(candidate, state.recent_suggestions, now=state.now, lam=config.novelty_lambda),
         "fatigue": -config.beta_fatigue
         * F.recent_interruption_penalty(

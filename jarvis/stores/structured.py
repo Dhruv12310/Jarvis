@@ -52,6 +52,7 @@ class Suggestion:
     content: str  # the LLM-written card body
     why: str  # deterministic: provenance reason + top score drivers
     source_ids: list[str]  # records the suggestion resolves to ("goal:7", ...)
+    topics: list[str]  # what it was about (for the user-model update on feedback)
     features: dict  # the per-feature score contributions (the reward report)
     score: float
     surfaced: bool
@@ -204,9 +205,21 @@ class StructuredStore(ABC):
         """Return suggestions surfaced at/after `since`, newest first (for cooldown/novelty)."""
 
     @abstractmethod
+    def get_suggestion(self, suggestion_id: str) -> Suggestion | None:
+        """Return one surfaced suggestion by id, or None."""
+
+    @abstractmethod
     def save_outcome(self, outcome: Outcome) -> None:
         """Persist a feedback outcome on a suggestion (Core §7.5)."""
 
     @abstractmethod
     def get_outcomes(self, *, since: datetime | None = None) -> list[Outcome]:
         """Return outcomes (optionally only at/after `since`), newest first."""
+
+    @abstractmethod
+    def get_feedback_weights(self) -> dict:
+        """Return the learned per-feature ranker weight multipliers (a JSON dict; {} if none)."""
+
+    @abstractmethod
+    def save_feedback_weights(self, weights: dict) -> None:
+        """Persist the learned per-feature ranker weight multipliers (§7.5)."""

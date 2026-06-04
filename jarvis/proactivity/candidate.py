@@ -53,6 +53,7 @@ class EngineState:
     connector_items: list = field(default_factory=list)  # Fetched[] (collector items + their term)
     user_model: object = None  # the 5a UserModel the ranker scores against
     recent_suggestions: list = field(default_factory=list)  # for novelty + cooldown + fatigue
+    feedback_weights: dict = field(default_factory=dict)  # learned per-feature multipliers (§7.5)
 
 
 class CandidateGenerator(Protocol):

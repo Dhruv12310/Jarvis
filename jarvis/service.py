@@ -337,20 +337,39 @@ class JarvisService:
             recent_suggestions=self._store.get_recent_suggestions(
                 since=now - timedelta(hours=lookback)
             ),
+            feedback_weights=self._store.get_feedback_weights(),
         )
 
     def record_outcome(self, suggestion_id: str, result: str) -> Outcome:
-        """Record the user's reaction to a surfaced suggestion (Core §7.5). Persisted now; the
-        learning that consumes it (user model + ranker weights) lands in the next slice. The signal
-        carries the result enum only - never the suggestion's content."""
+        """Record the user's reaction to a surfaced suggestion and fold it into learning (§7.5):
+        a positive value amplifies the suggestion's GOAL-LINKED topic and the features that drove
+        it; a negative one suppresses them. §8 holds (a pure-frequency topic can't be amplified,
+        attention is never positive). The signal carries the result enum only, never the content."""
         with self._signal("outcome") as sig:
             if result not in feedback.RESULTS:
                 raise ValueError(
                     f"unknown outcome '{result}'; one of {', '.join(feedback.RESULTS)}"
                 )
-            outcome = Outcome(suggestion_id=suggestion_id, ts=datetime.now(UTC), result=result)
+            now = datetime.now(UTC)
+            outcome = Outcome(suggestion_id=suggestion_id, ts=now, result=result)
             self._store.save_outcome(outcome)
             sig["result"] = result
+            suggestion = self._store.get_suggestion(suggestion_id)
+            if suggestion is not None:
+                model = um.from_dict(self._store.get_user_model())
+                model, weights = feedback.apply_outcome(
+                    outcome,
+                    suggestion,
+                    model,
+                    self._store.get_feedback_weights(),
+                    self._store.get_goals(status="active"),
+                    now=now,
+                    alpha=config.confidence_alpha,
+                    gamma=config.confidence_gamma,
+                    lr=config.feedback_lr,
+                )
+                self._store.save_user_model(um.to_dict(model))
+                self._store.save_feedback_weights(weights)
             return outcome
 
     def _fetch(self, name: str, term: str) -> list:

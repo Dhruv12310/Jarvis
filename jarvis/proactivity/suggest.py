@@ -39,6 +39,7 @@ def build(state, *, chat, now: datetime) -> list[Suggestion]:
                 content=_phrase.phrase(scored, chat),
                 why=_why(scored),
                 source_ids=list(candidate.provenance.source_ids),
+                topics=list(candidate.topics),
                 features=dict(scored.contributions),
                 score=scored.score,
                 surfaced=True,

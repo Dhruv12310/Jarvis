@@ -60,6 +60,19 @@ def test_usefulness_equals_weighted_sum_and_contributions_sum_to_score():
     assert sum(contrib.values()) == approx(score)
 
 
+def test_learned_feedback_weights_scale_the_score():
+    cand = _cand(entity_key="goal:1", features={"deadline_hours": 0.0})
+    base, _ = rank.usefulness(cand, _state([_goal()]))
+    boosted, _ = rank.usefulness(
+        cand,
+        EngineState(
+            now=NOW, goals=[_goal()], user_model=UserModel(), feedback_weights={"urgency": 2.0}
+        ),
+    )
+
+    assert boosted > base  # a learned multiplier shifts the score (and thus future ranking)
+
+
 def test_weak_pool_surfaces_nothing():
     # A bare news candidate - no goal, no interest, no urgency - falls below the absolute threshold.
     weak = _cand(ctype="news", entity_key="news:1", topics=["celebrity gossip"])
