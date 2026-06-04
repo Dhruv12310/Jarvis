@@ -97,6 +97,18 @@ class StructuredStore(ABC):
         """Return all budgets."""
 
     @abstractmethod
+    def save_category_override(self, merchant: str, category: str) -> None:
+        """Persist a user correction: this merchant's category (sticks for future imports)."""
+
+    @abstractmethod
+    def get_category_overrides(self) -> dict[str, str]:
+        """Return the merchant -> category overrides."""
+
+    @abstractmethod
+    def recategorize_merchant(self, merchant: str, category: str) -> int:
+        """Set the category of all stored transactions for a merchant; return the count updated."""
+
+    @abstractmethod
     def save_signal(self, event: SignalEvent) -> None:
         """Append a signal event to the log (append-only; never updated or deleted)."""
 

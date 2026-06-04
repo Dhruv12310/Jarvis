@@ -185,6 +185,14 @@ def _handle_command(text: str, service: JarvisService) -> None:
         _render_agenda(service.agenda())
     elif command in ("brief", "briefing"):
         print(service.briefing())
+    elif command == "recat":
+        merchant, _, category = argument.rpartition(" ")
+        merchant, category = merchant.strip(), category.strip()
+        if not merchant or not category:
+            print("usage: :recat <merchant> <category>")
+            return
+        count = service.recategorize(merchant, category)
+        print(f"recategorized {count} transaction(s) for '{merchant}' -> {category}")
     elif command == "signals":
         events = service.recent_signals(limit=20)
         if not events:

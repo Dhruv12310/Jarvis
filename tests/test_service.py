@@ -157,6 +157,28 @@ def test_failure_still_emits_a_signal_with_error_then_reraises(tmp_path, fake_em
     assert sig.payload["source"] == "cli"
 
 
+def test_recategorize_persists_and_signals_without_a_merchant_string(tmp_path, fake_embedder):
+    from datetime import date
+    from decimal import Decimal
+
+    from jarvis.finance.transaction import Transaction, make_id
+
+    service, store = _service(tmp_path, fake_embedder)
+    day, amt = date(2026, 1, 5), Decimal("-9.99")
+    store.save_transactions(
+        [Transaction(make_id("chk", day, amt, "SHELL"), day, amt, "SHELL", "transport", "chk")]
+    )
+
+    count = service.recategorize("SHELL", "groceries")
+
+    assert count == 1
+    assert store.get_transactions()[0].category == "groceries"
+    [sig] = store.get_signals()
+    assert sig.kind == "recategorize"
+    assert sig.payload == {"source": "cli", "category": "groceries", "updated": 1}
+    assert "SHELL" not in str(sig.payload)  # trust boundary: no merchant string in the log
+
+
 def test_recent_signals_is_a_non_emitting_inspector(tmp_path, fake_embedder):
     service, store = _service(tmp_path, fake_embedder)
     service.add_goal("x")  # 1 signal

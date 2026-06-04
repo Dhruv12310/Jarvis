@@ -111,6 +111,15 @@ class JarvisService:
             sig["count"] = len(records)
             return records
 
+    def recategorize(self, merchant: str, category: str) -> int:
+        """Persist a category correction for a merchant and apply it to stored transactions."""
+        with self._signal("recategorize") as sig:
+            self._store.save_category_override(merchant, category)
+            count = self._store.recategorize_merchant(merchant, category)
+            sig["category"] = category  # no merchant string / no amount in the signal log
+            sig["updated"] = count
+            return count
+
     def recent_signals(self, limit: int = 20) -> list[SignalEvent]:
         """Read-only inspector over the raw signal log. Does NOT emit (it would self-reference)."""
         return self._store.get_signals(limit=limit)

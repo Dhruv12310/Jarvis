@@ -48,6 +48,7 @@ def main() -> int:
             print("usage: python -m jarvis import <file.csv|file.ofx|file.qfx>")
             return 1
         from jarvis.config import config
+        from jarvis.finance.categorize import Categorizer, categorize_transactions
         from jarvis.finance.sources import source_for
         from jarvis.stores.sqlite_store import SQLiteStructuredStore
 
@@ -55,6 +56,10 @@ def main() -> int:
         transactions, accounts = source_for(args[1]).load()
         store = SQLiteStructuredStore(config.db_path)
         try:
+            # Categorize deterministically (rules + saved corrections) at import - no LLM, local.
+            # Unknown merchants stay "uncategorized"; the LLM fills them on demand later.
+            categorizer = Categorizer(overrides=store.get_category_overrides())
+            transactions = categorize_transactions(transactions, categorizer)
             added = store.save_transactions(transactions)
             for account in accounts:
                 store.save_account(account)

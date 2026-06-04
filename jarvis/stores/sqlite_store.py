@@ -79,6 +79,13 @@ CREATE TABLE IF NOT EXISTS budgets (
 )
 """
 
+_CATEGORY_OVERRIDES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS category_overrides (
+    merchant TEXT PRIMARY KEY,
+    category TEXT NOT NULL
+)
+"""
+
 
 class SQLiteStructuredStore(StructuredStore):
     def __init__(self, db_path: Path | str) -> None:
@@ -93,6 +100,7 @@ class SQLiteStructuredStore(StructuredStore):
         self._conn.execute(_TRANSACTIONS_SCHEMA)
         self._conn.execute(_ACCOUNTS_SCHEMA)
         self._conn.execute(_BUDGETS_SCHEMA)
+        self._conn.execute(_CATEGORY_OVERRIDES_SCHEMA)
         self._conn.commit()
 
     def save_note(self, content: str) -> Note:
@@ -240,6 +248,24 @@ class SQLiteStructuredStore(StructuredStore):
             Budget(category=r["category"], limit=Decimal(r["amount"]), period=r["period"])
             for r in rows
         ]
+
+    def save_category_override(self, merchant: str, category: str) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO category_overrides (merchant, category) VALUES (?, ?)",
+            (merchant, category),
+        )
+        self._conn.commit()
+
+    def get_category_overrides(self) -> dict[str, str]:
+        rows = self._conn.execute("SELECT merchant, category FROM category_overrides").fetchall()
+        return {r["merchant"]: r["category"] for r in rows}
+
+    def recategorize_merchant(self, merchant: str, category: str) -> int:
+        cursor = self._conn.execute(
+            "UPDATE transactions SET category = ? WHERE merchant = ?", (category, merchant)
+        )
+        self._conn.commit()
+        return cursor.rowcount
 
     def save_signal(self, event: SignalEvent) -> None:
         self._conn.execute(
