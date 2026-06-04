@@ -17,3 +17,4 @@ class SignalEvent:
     kind: str  # "query" | "command" | "briefing" | "goal_added" | "calendar_read" | ...
     payload: dict  # topic(s), path/connector, outcome, etc.
     session_id: str  # uuid per CLI session
+    seq: int | None = None  # the append-only log position; None until read back from the store

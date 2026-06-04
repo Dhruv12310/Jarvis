@@ -55,6 +55,37 @@ def test_goal_linked_interest_amplifies_but_pure_frequency_does_not():
     assert by_topic["crypto"].confidence == 0.3  # ...but the pattern is still recorded
 
 
+def test_pure_frequency_never_amplifies_even_after_many_reconfirmations():
+    # The §8 guarantee as an INVARIANT, not a single step: a high-frequency NON-goal topic (a
+    # compulsion the user repeats) has its confidence rise toward 1.0 but its amplifiable weight
+    # stays pinned at 0.0 on every single iteration. Frequency is recorded, never amplified.
+    model = UserModel()
+    prev_conf = 0.0
+    for _ in range(50):
+        model = merge(model, _interest("doomscroll"), [], now=NOW, alpha=_A, gamma=_G)
+        it = next(i for i in model.interests if i.topic == "doomscroll")
+        assert it.weight == 0.0  # NEVER amplified, no matter how often it recurs
+        assert it.confidence >= prev_conf  # confidence rises monotonically (pattern is real)
+        prev_conf = it.confidence
+    assert prev_conf > 0.9  # it did saturate - so weight staying 0.0 is a guard, not a no-op
+
+
+def test_suppress_unknown_topic_is_a_noop():
+    model = merge(
+        UserModel(),
+        _interest("rust"),
+        [SimpleNamespace(description="learn rust")],
+        now=NOW,
+        alpha=_A,
+        gamma=_G,
+    )
+
+    after = suppress_interest(model, "not-a-topic", now=NOW, gamma=_G)
+
+    assert [i.topic for i in after.interests] == ["rust"]
+    assert after.interests[0].weight == model.interests[0].weight  # untouched
+
+
 def test_reconfirming_an_interest_raises_confidence():
     goals = [SimpleNamespace(description="learn rust")]
     model = merge(UserModel(), _interest("rust"), goals, now=NOW, alpha=_A, gamma=_G)

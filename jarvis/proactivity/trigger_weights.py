@@ -9,9 +9,21 @@ the Core §8 guard, made code instead of prose.
 
 from __future__ import annotations
 
-# Passive / attention-derived signal kinds. These NEVER contribute trigger fuel (Core §8): a view or
-# a dwell must not pull the system toward reflecting on what merely grabbed attention.
-DENYLIST = frozenset({"suggestion_shown", "item_dwell"})
+# Kinds that NEVER contribute trigger fuel. Two families: (1) passive/attention-derived (a view or a
+# dwell must not pull the system toward reflecting on what merely grabbed attention - the Core §8
+# guard); (2) self-referential meta - inspecting/controlling/running the model itself must not fuel
+# more reflection (e.g. a reflection's own emitted signal can't bootstrap the next one).
+DENYLIST = frozenset(
+    {
+        "suggestion_shown",
+        "item_dwell",
+        "reflect",
+        "user_model",
+        "user_model_reset",
+        "forget",
+        "suppress_topic",
+    }
+)
 
 # Fuel weights by signal kind. Higher = a stronger sign that something about the user genuinely
 # changed and is worth re-reflecting on. Explicit user actions rank highest; inspectors lowest.

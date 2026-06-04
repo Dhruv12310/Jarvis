@@ -301,14 +301,14 @@ class SQLiteStructuredStore(StructuredStore):
 
     def get_signals(self, limit: int = 50) -> list[SignalEvent]:
         rows = self._conn.execute(
-            "SELECT id, ts, kind, payload, session_id FROM signals ORDER BY seq DESC LIMIT ?",
+            "SELECT seq, id, ts, kind, payload, session_id FROM signals ORDER BY seq DESC LIMIT ?",
             (limit,),
         ).fetchall()
         return [self._row_to_signal(row) for row in rows]
 
     def get_signals_since(self, after_seq: int) -> list[SignalEvent]:
         rows = self._conn.execute(
-            "SELECT id, ts, kind, payload, session_id FROM signals WHERE seq > ? ORDER BY seq",
+            "SELECT seq, id, ts, kind, payload, session_id FROM signals WHERE seq > ? ORDER BY seq",
             (after_seq,),
         ).fetchall()
         return [self._row_to_signal(row) for row in rows]
@@ -362,6 +362,7 @@ class SQLiteStructuredStore(StructuredStore):
             kind=row["kind"],
             payload=json.loads(row["payload"]),
             session_id=row["session_id"],
+            seq=row["seq"],
         )
 
     @staticmethod

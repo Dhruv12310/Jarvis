@@ -25,6 +25,13 @@ def test_attention_kinds_yield_zero_fuel():
         assert trigger_fuel(kind) == 0.0
 
 
+def test_self_referential_meta_kinds_yield_zero_fuel():
+    # Running/inspecting/controlling the model must not fuel more reflection - e.g. a reflection's
+    # own emitted signal can't bootstrap the next one into a self-sustaining loop.
+    for kind in ("reflect", "user_model", "user_model_reset", "forget", "suppress_topic"):
+        assert trigger_fuel(kind) == 0.0
+
+
 def test_accumulated_fuel_sums_and_excludes_attention():
     signals = [_sig("goal_done"), _sig("ask"), _sig("item_dwell")]  # 1.0 + 0.4 + 0.0
 

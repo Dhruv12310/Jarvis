@@ -271,6 +271,15 @@ def _handle_command(text: str, service: JarvisService) -> None:
             service.reset_user_model()
             print("user model reset")
             return
+        verb, _, topic = argument.partition(" ")
+        if verb.lower() == "suppress":
+            topic = topic.strip()
+            if not topic:
+                print("usage: :profile suppress <topic>")
+                return
+            service.suppress_topic(topic)
+            print(f"suppressed: {topic} (weight + confidence decayed)")
+            return
         _render_profile(service.user_model())
     elif command == "why":
         reflections = [m for m in service.memories() if m.type == "reflection"]

@@ -6,6 +6,8 @@ import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
+
 from jarvis.proactivity.context import Context
 from jarvis.proactivity.reflect import _PROMPT, reflect, synthesize
 
@@ -56,12 +58,22 @@ def test_synthesize_drops_ungrounded_and_malformed_items():
     assert [i.content for i in out] == ["ok"]
 
 
-def test_synthesize_returns_empty_on_garbage_output():
+def test_synthesize_raises_on_unparseable_output():
+    # A hard failure must propagate (not silently become []) so reflect() can leave the baseline
+    # un-advanced and retry the window - a transient model outage can't eat a day of signals.
     class _Bad:
         def generate(self, prompt, **kwargs):
             return "not json"
 
-    assert synthesize(_ctx(), _Bad()) == []
+    with pytest.raises(json.JSONDecodeError):
+        synthesize(_ctx(), _Bad())
+
+
+def test_synthesize_drops_insight_linking_memory_absent_from_this_context():
+    # Grounding means the link resolves to THIS assembled context, not just any plausible id.
+    llm = _FakeLLM([{"kind": "interest", "content": "x", "links": ["m2"]}])
+
+    assert synthesize(_ctx(ids=("m1", "signals")), llm) == []
 
 
 class _MemStore:

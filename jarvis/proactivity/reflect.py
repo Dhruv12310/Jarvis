@@ -59,13 +59,14 @@ class Insight:
 
 
 def synthesize(context: Context, llm) -> list[Insight]:
-    """Ask the LLM for typed insights, then keep only the well-typed + grounded ones."""
-    try:
-        data = json.loads(
-            llm.generate(_PROMPT.format(block=context.block), format=_SCHEMA, think=False)
-        )
-    except Exception:
-        return []  # synthesis never crashes reflection
+    """Ask the LLM for typed insights, then keep only the well-typed + grounded ones.
+
+    A hard failure (the LLM call raises, or the response is unparseable) PROPAGATES so the caller
+    can leave the reflection baseline un-advanced and retry the window - a transient model outage
+    must not silently consume a day of signals. A clean parse with zero survivors returns []."""
+    data = json.loads(
+        llm.generate(_PROMPT.format(block=context.block), format=_SCHEMA, think=False)
+    )
     insights = []
     for item in data.get("insights", []) if isinstance(data, dict) else []:
         if not isinstance(item, dict):

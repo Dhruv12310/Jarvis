@@ -277,6 +277,67 @@ def test_reflect_forced_runs_synthesis_and_writes_inferred_memory(tmp_path, fake
     assert "morning" not in str(refl.payload)  # no insight content in the signal log
 
 
+def test_reflect_advances_baseline_to_processed_window_not_global_max(tmp_path, fake_embedder):
+    import json
+
+    class _ReflLLM:
+        def generate(self, prompt, *, format=None, think=None):
+            return json.dumps(
+                {"insights": [{"kind": "rhythm", "content": "mornings", "links": ["signals"]}]}
+            )
+
+    service, store = _service(tmp_path, fake_embedder, llm=_ReflLLM())
+    service.add_goal("learn rust")  # a real signal inside the window
+
+    service.reflect(force=True)
+
+    # The reflect signal is appended AFTER the processed window; the baseline must sit at the window
+    # max, strictly below the global max - else a write during synthesis would be skipped forever.
+    assert store.get_reflection_state().last_seq < store.latest_signal_seq()
+
+
+def test_reflect_hard_failure_leaves_baseline_unadvanced(tmp_path, fake_embedder):
+    class _BadLLM:
+        def generate(self, prompt, *, format=None, think=None):
+            raise RuntimeError("ollama down")
+
+    service, store = _service(tmp_path, fake_embedder, llm=_BadLLM())
+    service.add_goal("learn rust")  # fuel in the window
+
+    written = service.reflect(force=True)
+
+    assert written == 0
+    assert store.get_reflection_state().last_seq == 0  # window NOT consumed -> retried next run
+    refl = [s for s in store.get_signals() if s.kind == "reflect"][0]
+    assert refl.payload["reflected"] is False and refl.payload["error"] == "RuntimeError"
+
+
+def test_suppress_topic_pulls_down_a_weight_without_leaking_the_topic(tmp_path, fake_embedder):
+    service, store = _service(tmp_path, fake_embedder)
+    store.save_user_model(
+        {
+            "interests": [
+                {
+                    "topic": "rust",
+                    "weight": 0.6,
+                    "confidence": 0.6,
+                    "last_updated": "2026-06-03T09:00:00",
+                }
+            ],
+            "rhythms": [],
+            "preferences": [],
+            "updated_at": None,
+        }
+    )
+
+    service.suppress_topic("rust")
+
+    rust = next(i for i in service.user_model().interests if i.topic == "rust")
+    assert rust.weight < 0.6 and rust.confidence < 0.6  # the user pulled it down
+    sig = [s for s in store.get_signals() if s.kind == "suppress_topic"][0]
+    assert "rust" not in str(sig.payload)  # free-text topic stays out of the signal log
+
+
 def test_user_model_is_inspectable_with_live_goals(tmp_path, fake_embedder):
     service, _store = _service(tmp_path, fake_embedder)
     service.add_goal("learn rust")

@@ -197,14 +197,21 @@ class JarvisService:
                 return 0
             now = datetime.now(UTC)
             goals = self._store.get_goals(status="active")
-            insights = _reflect(
-                signals_since=new_signals,
-                memories=self._memory.all(),
-                goals=goals,
-                llm=self._llm,
-                memory_store=self._memory,
-                now=now,
-            )
+            try:
+                insights = _reflect(
+                    signals_since=new_signals,
+                    memories=self._memory.all(),
+                    goals=goals,
+                    llm=self._llm,
+                    memory_store=self._memory,
+                    now=now,
+                )
+            except Exception as exc:
+                # A hard synthesis failure must NOT advance the baseline: leave the window so the
+                # next run retries it rather than forfeiting those signals.
+                sig["reflected"] = False
+                sig["error"] = type(exc).__name__
+                return 0
             # Materialize the user model from insights (deterministic; frequency never amplifies).
             model = um.from_dict(self._store.get_user_model())
             for insight in insights:
@@ -217,8 +224,11 @@ class JarvisService:
                     gamma=config.confidence_gamma,
                 )
             self._store.save_user_model(um.to_dict(model))
-            # Advance the baseline only after a persisted, successful reflection.
-            self._store.save_reflection_state(self._store.latest_signal_seq(), now)
+            # Advance the baseline to the max seq of the window we ACTUALLY processed - never the
+            # global max, or a signal written during synthesis (e.g. by the always-on Heartbeat or
+            # another front-end) would be skipped forever. Empty forced run: leave it where it was.
+            processed_seq = new_signals[-1].seq if new_signals else state.last_seq
+            self._store.save_reflection_state(processed_seq, now)
             sig["reflected"] = True
             sig["insights"] = len(insights)  # metadata only - no insight content in the log
             sig["forced"] = force
@@ -234,6 +244,17 @@ class JarvisService:
         """Delete a reflection (or any) memory - the user controls their own model."""
         with self._signal("forget"):
             self._memory.forget(memory_id)
+
+    def suppress_topic(self, topic: str) -> None:
+        """User correction: stop amplifying one inferred interest. Decays its weight + confidence
+        in place (a targeted pull-down, vs reset's full wipe). The topic stays out of the signal
+        log (free text) - only that a suppression happened is recorded."""
+        with self._signal("suppress_topic"):
+            model = um.from_dict(self._store.get_user_model())
+            model = um.suppress_interest(
+                model, topic, now=datetime.now(UTC), gamma=config.confidence_gamma
+            )
+            self._store.save_user_model(um.to_dict(model))
 
     def reset_user_model(self) -> None:
         """Wipe the materialized user model (a user-controlled reset)."""
