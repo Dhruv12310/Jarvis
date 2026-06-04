@@ -242,6 +242,41 @@ def test_set_budget_rejects_an_unknown_category(tmp_path, fake_embedder):
         service.set_budget("not-a-category", Decimal("100"))
 
 
+def test_reflect_skips_below_threshold_and_signals_metadata_only(tmp_path, fake_embedder):
+    service, store = _service(tmp_path, fake_embedder)  # empty signal log -> no fuel
+
+    written = service.reflect(force=False)
+
+    assert written == 0
+    [sig] = store.get_signals()
+    assert sig.kind == "reflect" and sig.payload == {"source": "cli", "reflected": False}
+
+
+def test_reflect_forced_runs_synthesis_and_writes_inferred_memory(tmp_path, fake_embedder):
+    import json
+
+    class _ReflLLM:
+        def generate(self, prompt, *, format=None, think=None):
+            # a behavioral insight grounded on the "signals" aggregate (no memory needed)
+            return json.dumps(
+                {
+                    "insights": [
+                        {"kind": "rhythm", "content": "works in the morning", "links": ["signals"]}
+                    ]
+                }
+            )
+
+    service, store = _service(tmp_path, fake_embedder, llm=_ReflLLM())
+
+    written = service.reflect(force=True)
+
+    assert written == 1
+    assert any(m.type == "reflection" for m in service.memories())  # the inferred memory was saved
+    refl = [s for s in store.get_signals() if s.kind == "reflect"][0]
+    assert refl.payload["insights"] == 1 and refl.payload["forced"] is True
+    assert "morning" not in str(refl.payload)  # no insight content in the signal log
+
+
 def test_recent_signals_is_a_non_emitting_inspector(tmp_path, fake_embedder):
     service, store = _service(tmp_path, fake_embedder)
     service.add_goal("x")  # 1 signal

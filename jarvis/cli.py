@@ -245,6 +245,8 @@ def _handle_command(text: str, service: JarvisService) -> None:
             print(f"  {account.name} ({account.type}): {format_money(account.balance)}")
     elif command == "budget":
         _handle_budget(argument, service)
+    elif command == "reflect":
+        print(f"reflected: {service.reflect(force=True)} insight(s)")
     elif command == "signals":
         events = service.recent_signals(limit=20)
         if not events:

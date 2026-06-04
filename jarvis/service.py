@@ -11,9 +11,10 @@ stays in the engines; the LLM is only the existing routing/summarizing/briefing 
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from jarvis.briefing import BriefingData, phrase
+from jarvis.config import config
 from jarvis.finance import engine, qa
 from jarvis.finance.categorize import CATEGORIES, Categorizer
 from jarvis.finance.money import format_money
@@ -22,6 +23,8 @@ from jarvis.knowledge.pipeline import Knowledge
 from jarvis.memory.record import MemoryRecord
 from jarvis.memory.store import MemoryStore
 from jarvis.orchestrator import Orchestrator
+from jarvis.proactivity.reflect import reflect as _reflect
+from jarvis.proactivity.trigger import accumulated_fuel, should_reflect
 from jarvis.results import AgendaResult, AskResult
 from jarvis.signals.event import SignalEvent
 from jarvis.signals.log import SignalLog
@@ -175,6 +178,35 @@ class JarvisService:
             today = date.today()
             month = self._store.get_transactions(start=today.replace(day=1), end=today)
             return engine.budget_vs_actual(month, self._store.get_budgets())
+
+    # --- proactivity (Phase 5a): reflection. Deterministic trigger; LLM synthesizes, grounded. ---
+
+    def reflect(self, *, force: bool = False) -> int:
+        """Run reflection if the §7.4 trigger fires (or forced): grounded LLM synthesis over the
+        signal history + memories + goals -> reflection memories. Returns the insights written."""
+        with self._signal("reflect") as sig:
+            state = self._store.get_reflection_state()
+            new_signals = self._store.get_signals_since(state.last_seq)
+            if not force and not should_reflect(
+                accumulated_fuel(new_signals), config.reflection_threshold
+            ):
+                sig["reflected"] = False
+                return 0
+            now = datetime.now(UTC)
+            insights = _reflect(
+                signals_since=new_signals,
+                memories=self._memory.all(),
+                goals=self._store.get_goals(status="active"),
+                llm=self._llm,
+                memory_store=self._memory,
+                now=now,
+            )
+            # Advance the baseline only after a persisted, successful reflection.
+            self._store.save_reflection_state(self._store.latest_signal_seq(), now)
+            sig["reflected"] = True
+            sig["insights"] = len(insights)  # metadata only - no insight content in the log
+            sig["forced"] = force
+            return len(insights)
 
     def recent_signals(self, limit: int = 20) -> list[SignalEvent]:
         """Read-only inspector over the raw signal log. Does NOT emit (it would self-reference)."""

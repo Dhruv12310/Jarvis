@@ -6,6 +6,7 @@ Usage:
     python -m jarvis voice        push-to-talk voice loop (local STT + TTS)
     python -m jarvis import <f>   import transactions from a local CSV/OFX/QFX file
     python -m jarvis import --plaid  sync transactions from Plaid (opt-in; needs .env creds)
+    python -m jarvis reflect      run reflection once (Brain job): synthesize insights about you
     python -m jarvis selftest     run the Phase 0 Definition-of-Done self-test
     python -m jarvis calendar-auth  one-time Google Calendar OAuth (read-only)
 """
@@ -87,6 +88,16 @@ def main() -> int:
             f"imported {added} new transaction(s) from {len(transactions)} row(s); "
             f"{len(accounts)} account(s)"
         )
+        return 0
+    if args and args[0] == "reflect":
+        # Reflection is a Brain job (LLM synthesis): run it once on demand, then exit.
+        from jarvis.cli import build_service
+
+        service, store = build_service(source="cli")
+        try:
+            print(f"reflected: {service.reflect(force=True)} insight(s)")
+        finally:
+            store.close()
         return 0
     if args and args[0] == "voice":
         # Voice libs stay under jarvis.voice (boundary-guarded). STT + TTS are local.
