@@ -99,6 +99,20 @@ def main() -> int:
         finally:
             store.close()
         return 0
+    if args and args[0] == "suggest":
+        # Run the proactivity engine once (generate -> rank -> phrase) and print the cards.
+        from jarvis.cli import build_service
+
+        service, store = build_service(source="cli")
+        try:
+            cards = service.suggestions()
+            if not cards:
+                print("(nothing worth surfacing right now)")
+            for card in cards:
+                print(f"- {card.content}\n  why: {card.why}")
+        finally:
+            store.close()
+        return 0
     if args and args[0] == "voice":
         # Voice libs stay under jarvis.voice (boundary-guarded). STT + TTS are local.
         from jarvis.cli import build_service

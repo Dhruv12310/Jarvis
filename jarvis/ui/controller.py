@@ -77,6 +77,18 @@ class AppController:
             return
         self._feed.post_card(Card("Goal added", f"#{goal.id}  {goal.description}", "goal"))
 
+    def show_suggestions(self) -> None:
+        try:
+            suggestions = self._service.suggestions()
+        except Exception as exc:
+            self._post_error(exc)
+            return
+        if not suggestions:
+            self._feed.post_card(Card("Jarvis", "Nothing worth surfacing right now.", "suggestion"))
+            return
+        for s in suggestions:
+            self._feed.post_card(Card("Suggestion", s.content, "suggestion", why=s.why))
+
     def _post_error(self, exc: Exception) -> None:
         # A backend failure (e.g. Ollama down) posts an error card instead of crashing the GUI, so
         # the feed keeps receiving. Redacted, since exception text reaches a user surface.

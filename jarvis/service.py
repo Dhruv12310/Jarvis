@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from jarvis.briefing import BriefingData, phrase
 from jarvis.config import config
@@ -24,14 +24,17 @@ from jarvis.knowledge.pipeline import Knowledge
 from jarvis.memory.record import MemoryRecord
 from jarvis.memory.store import MemoryStore
 from jarvis.orchestrator import Orchestrator
+from jarvis.proactivity import suggest
 from jarvis.proactivity import user_model as um
+from jarvis.proactivity.candidate import EngineState, Fetched
+from jarvis.proactivity.generators import collector_queries
 from jarvis.proactivity.reflect import reflect as _reflect
 from jarvis.proactivity.trigger import accumulated_fuel, should_reflect
 from jarvis.proactivity.user_model import UserModel
 from jarvis.results import AgendaResult, AskResult
 from jarvis.signals.event import SignalEvent
 from jarvis.signals.log import SignalLog
-from jarvis.stores.structured import Goal, StructuredStore, Watch
+from jarvis.stores.structured import Goal, StructuredStore, Suggestion, Watch
 
 # What the briefing pulls from the Phase-1 knowledge pipeline. Fixed for Phase 2/3; goal-derived
 # digests are a later refinement.
@@ -49,6 +52,7 @@ class JarvisService:
         signals: SignalLog,
         source: str,
         llm=None,
+        connectors=None,
     ) -> None:
         self._orchestrator = orchestrator
         self._knowledge = knowledge
@@ -58,6 +62,8 @@ class JarvisService:
         self._source = source
         # raw LLM for finance's structured parse/classify; prose phrasing uses the orchestrator.
         self._llm = llm
+        # public collectors for proactivity candidate fetch (queried with watchlist terms only).
+        self._connectors = connectors or {}
 
     # --- capabilities (each emits exactly one signal, including on failure) -----------------
 
@@ -284,6 +290,64 @@ class JarvisService:
         with self._signal("watch_remove"):
             value = value.strip().upper() if kind == "symbol" else value.strip()
             self._store.remove_watch(kind, value)
+
+    # --- proactivity engine (Phase 5b): generate -> rank -> phrase -> the feed ----------------
+
+    def suggestions(self, *, now: datetime | None = None) -> list[Suggestion]:
+        """Run the engine once: gather state, generate candidates, rank + gate, phrase survivors.
+        Persists each surfaced Suggestion (so 5c can attach an Outcome); signals are metadata-only.
+        Returns the top-K cards, or an empty list when nothing clears the bar (the common case).
+        `now` is injectable for deterministic tests; production passes the real local time."""
+        with self._signal("suggest") as sig:
+            now = now or datetime.now().astimezone()
+            built = suggest.build(self._engine_state(now), chat=self._orchestrator.chat, now=now)
+            for s in built:
+                self._store.save_suggestion(s)
+                # attention marker for 5c - metadata only (type enum, never card text), 0 fuel.
+                self._signals.emit(
+                    "suggestion_shown", {"source": self._source, "type": s.candidate_type}
+                )
+            sig["surfaced"] = len(built)
+            return built
+
+    def _engine_state(self, now: datetime) -> EngineState:
+        """Gather the deterministic snapshot the engine ranks over. The only outbound calls are
+        collector fetches, and they use PUBLIC watchlist terms only (the trust boundary)."""
+        today = now.date()
+        month = self._store.get_transactions(start=today.replace(day=1), end=today)
+        events, _connected = self._calendar_events(now)
+        watch = self._store.get_watchlist()
+        symbols = [w.value for w in watch if w.kind == "symbol"] or list(config.market_watchlist)
+        topics = [w.value for w in watch if w.kind == "topic"]
+        items = [
+            Fetched(source=name, term=term, item=item)
+            for name, term in collector_queries(symbols, topics)
+            for item in self._fetch(name, term)
+        ]
+        lookback = max(config.suggestion_window_hours, config.entity_cooldown_hours)
+        active_goals = self._store.get_goals(status="active")
+        return EngineState(
+            now=now,
+            goals=active_goals,
+            budget_status=engine.budget_vs_actual(month, self._store.get_budgets()),
+            transactions=self._store.get_transactions(),
+            events=events,
+            connector_items=items,
+            user_model=replace(um.from_dict(self._store.get_user_model()), goals=active_goals),
+            recent_suggestions=self._store.get_recent_suggestions(
+                since=now - timedelta(hours=lookback)
+            ),
+        )
+
+    def _fetch(self, name: str, term: str) -> list:
+        """Fetch a connector's items for a public term; a missing/failing source is empty."""
+        connector = self._connectors.get(name)
+        if connector is None:
+            return []
+        try:
+            return connector.fetch(term).items
+        except Exception:
+            return []
 
     def recent_signals(self, limit: int = 20) -> list[SignalEvent]:
         """Read-only inspector over the raw signal log. Does NOT emit (it would self-reference)."""

@@ -24,19 +24,19 @@ does I/O. Abstention is the default; the frequency cap is structural.
 - [x] `config` — `market_move_pct`
 - [x] Verify: `test_watchlist_store.py` round-trip; collector generator fire/abstain; **collector_queries emits only public watch terms**; facade upper-case + metadata-only. 299 passed, ruff clean
 
-## [ ] Slice 3 — Features + ranker + gate (§7.2)  ·  `feat(proactivity): explainable usefulness ranking with abstention and a structural frequency cap`
-- [ ] `proactivity/features.py` — calibrated [0,1] monotone, PURE (no LLM/httpx/attention): `goal_relevance`, `urgency`, `interest_match` (max goal-linked `Interest.weight`; 0 for pure-freq), `timing_fit` (rhythms + config quiet-hours; no UserModel.dnd), `novelty`, `recent_interruption_penalty`
-- [ ] `proactivity/rank.py` — `usefulness`=Σβ·f (absolute, NO min-max) + `contributions`; `select` = abstain @ `usefulness_threshold` → DND gate → entity cooldown → per-category cap → global cap → top-K
-- [ ] `config` — β weights, `usefulness_threshold`, caps/window, `entity_cooldown`, `urgency_horizon`, `stale_goal_days`, `novelty_lambda`, `quiet_hours_*`, `proactivity_enabled`
-- [ ] Verify: `test_proactivity_features.py` + `test_rank.py` — exact sum; **§8 guards each a test** (no attention feature; interest_match=0 pure-freq; weak pool→[]; structural cap bounds volume; cooldown/cap/DND; top-K order); boundary: features/rank/candidate import no LLM + no httpx
+## [x] Slice 3 — Features + ranker + gate (§7.2)  ·  `feat(proactivity): explainable usefulness ranking with abstention and a structural frequency cap` (5041874)
+- [x] `proactivity/features.py` — calibrated [0,1] monotone, PURE: `goal_relevance`, `urgency`, `interest_match` (max goal-linked `Interest.weight`; 0 for pure-freq), `timing_fit` (config quiet-hours), `novelty`, `recent_interruption_penalty`
+- [x] `proactivity/rank.py` — `usefulness`=Σβ·f (absolute, NO min-max) + `contributions`; `select` = abstain @ `usefulness_threshold` → DND gate → entity cooldown → per-category cap → global cap → top-K
+- [x] `config` — β weights, `usefulness_threshold`, caps/window, `entity_cooldown`, `novelty_lambda`, `quiet_hours_*`, `proactivity_enabled`; `EngineState` += user_model + recent_suggestions
+- [x] Verify: `test_proactivity_features.py` + `test_rank.py` — exact sum; §8 guards each a test (no attention feature; interest_match=0 pure-freq; weak pool→[]; structural cap bounds volume; cooldown/cap/DND; top-K order); boundary: features/rank/candidate import no LLM. 314 passed, ruff clean
 
-## [ ] Slice 4 — Engine + persistence + phrasing + wiring  ·  `feat(proactivity): suggestion engine - generate, rank, phrase, persist, post to the feed`
-- [ ] `proactivity/phrase.py` — LLM phrases card body only (the only 5b model call)
-- [ ] `proactivity/suggest.py` — engine: gather `EngineState` (connector fetch w/ watchlist terms only) → generate_all → select → phrase → persist `Suggestion` → `[Card]`; abstain → `[]`
-- [ ] `stores` — `save_suggestion` + `get_recent_suggestions`; `suggestions` table (§5.5)
-- [ ] `service.py` — `suggestions()` + `add/list/remove_watch`; metadata-only `suggest` + `suggestion_shown` signals (0 fuel)
-- [ ] `ui/feed.py` `Card.why` + `ui/controller.show_suggestions`; `cli`/`__main__` `:suggest` + `suggest` subcommand
-- [ ] Verify: `test_suggest_engine.py` (fake LLM → cards w/ deterministic why resolving to real ids; Suggestion persisted; metadata-only signals; abstention message) + facade/controller tests; `pytest -q` offline green; live phrasing/collectors integration-gated
+## [x] Slice 4 — Engine + persistence + phrasing + wiring  ·  `feat(proactivity): suggestion engine - generate, rank, phrase, persist, post to the feed`
+- [x] `proactivity/phrase.py` — LLM phrases card body only (the only 5b model call; grounded on reason+payload)
+- [x] `proactivity/suggest.py` — `build(state, chat, now)`: generate_all → select → phrase → `Suggestion[]`; deterministic `_why`; abstain → `[]`
+- [x] `stores` — `Suggestion` (§5.5 +entity_key/why/source_ids) + `suggestions` table + `save_suggestion`/`get_recent_suggestions`
+- [x] `service.py` — `suggestions(now=None)` gathers `EngineState` (collector fetch w/ watchlist terms only) + persists + metadata-only `suggest`/`suggestion_shown`; connectors wired via `build_service`
+- [x] `ui/feed.py` `Card.why` + `ui/controller.show_suggestions`; `cli :suggest`; `python -m jarvis suggest`
+- [x] Verify: `test_suggest_engine.py` (deterministic why → real ids; abstention) + facade persistence/metadata-only test
 
 ### ▸ Checkpoint: 5b feature-complete → `/test` → multi-lens review (incl. objective-drift lens, vs a real ranker) → fix → `/code-simplify` → `/ship` (push) → learnings in DECISIONS → THEN spec 5c.
 

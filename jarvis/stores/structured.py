@@ -41,6 +41,24 @@ class Watch:
 
 
 @dataclass(frozen=True)
+class Suggestion:
+    """A surfaced proactive suggestion (Core §5.5). Persisted so 5c can attach an Outcome; the
+    `why` + `source_ids` are deterministic provenance (never an LLM verdict)."""
+
+    id: str
+    created_at: datetime
+    candidate_type: str
+    entity_key: str  # for cooldown + novelty lookups
+    content: str  # the LLM-written card body
+    why: str  # deterministic: provenance reason + top score drivers
+    source_ids: list[str]  # records the suggestion resolves to ("goal:7", ...)
+    features: dict  # the per-feature score contributions (the reward report)
+    score: float
+    surfaced: bool
+    channel: str  # feed | voice | notification
+
+
+@dataclass(frozen=True)
 class ReflectionState:
     last_seq: int  # signal-log seq processed by the last reflection (monotonic baseline)
     last_reflection_at: datetime | None
@@ -167,3 +185,11 @@ class StructuredStore(ABC):
     @abstractmethod
     def remove_watch(self, kind: str, value: str) -> None:
         """Remove a watch term (no-op if absent)."""
+
+    @abstractmethod
+    def save_suggestion(self, suggestion: Suggestion) -> None:
+        """Persist a surfaced suggestion (Core §5.5)."""
+
+    @abstractmethod
+    def get_recent_suggestions(self, *, since: datetime) -> list[Suggestion]:
+        """Return suggestions surfaced at/after `since`, newest first (for cooldown/novelty)."""

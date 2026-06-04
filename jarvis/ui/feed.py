@@ -14,7 +14,8 @@ from dataclasses import dataclass
 class Card:
     title: str
     body: str
-    kind: str  # briefing | answer | chat | agenda | goal | memory | error
+    kind: str  # briefing | answer | chat | agenda | goal | memory | suggestion | error
+    why: str | None = None  # for proactive suggestions: the deterministic "why am I seeing this?"
 
 
 class Feed:

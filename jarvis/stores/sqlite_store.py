@@ -15,7 +15,14 @@ from pathlib import Path
 
 from jarvis.finance.transaction import Account, Budget, Transaction
 from jarvis.signals.event import SignalEvent
-from jarvis.stores.structured import Goal, Note, ReflectionState, StructuredStore, Watch
+from jarvis.stores.structured import (
+    Goal,
+    Note,
+    ReflectionState,
+    StructuredStore,
+    Suggestion,
+    Watch,
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS notes (
@@ -112,6 +119,23 @@ CREATE TABLE IF NOT EXISTS watchlist (
 )
 """
 
+# Surfaced suggestions (Core §5.5). Persisted so 5c can attach Outcomes; json for lists/dicts.
+_SUGGESTIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS suggestions (
+    id             TEXT PRIMARY KEY,
+    created_at     TEXT NOT NULL,
+    candidate_type TEXT NOT NULL,
+    entity_key     TEXT NOT NULL,
+    content        TEXT NOT NULL,
+    why            TEXT NOT NULL,
+    source_ids     TEXT NOT NULL,
+    features       TEXT NOT NULL,
+    score          REAL NOT NULL,
+    surfaced       INTEGER NOT NULL,
+    channel        TEXT NOT NULL
+)
+"""
+
 
 class SQLiteStructuredStore(StructuredStore):
     def __init__(self, db_path: Path | str) -> None:
@@ -130,6 +154,7 @@ class SQLiteStructuredStore(StructuredStore):
         self._conn.execute(_REFLECTION_STATE_SCHEMA)
         self._conn.execute(_USER_MODEL_SCHEMA)
         self._conn.execute(_WATCHLIST_SCHEMA)
+        self._conn.execute(_SUGGESTIONS_SCHEMA)
         self._conn.commit()
 
     def save_note(self, content: str) -> Note:
@@ -376,6 +401,50 @@ class SQLiteStructuredStore(StructuredStore):
     def remove_watch(self, kind: str, value: str) -> None:
         self._conn.execute("DELETE FROM watchlist WHERE kind = ? AND value = ?", (kind, value))
         self._conn.commit()
+
+    def save_suggestion(self, suggestion: Suggestion) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO suggestions (id, created_at, candidate_type, entity_key, "
+            "content, why, source_ids, features, score, surfaced, channel) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                suggestion.id,
+                suggestion.created_at.isoformat(),
+                suggestion.candidate_type,
+                suggestion.entity_key,
+                suggestion.content,
+                suggestion.why,
+                json.dumps(suggestion.source_ids),
+                json.dumps(suggestion.features),
+                suggestion.score,
+                int(suggestion.surfaced),
+                suggestion.channel,
+            ),
+        )
+        self._conn.commit()
+
+    def get_recent_suggestions(self, *, since: datetime) -> list[Suggestion]:
+        rows = self._conn.execute(
+            "SELECT * FROM suggestions WHERE created_at >= ? ORDER BY created_at DESC",
+            (since.isoformat(),),
+        ).fetchall()
+        return [self._row_to_suggestion(row) for row in rows]
+
+    @staticmethod
+    def _row_to_suggestion(row: sqlite3.Row) -> Suggestion:
+        return Suggestion(
+            id=row["id"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            candidate_type=row["candidate_type"],
+            entity_key=row["entity_key"],
+            content=row["content"],
+            why=row["why"],
+            source_ids=json.loads(row["source_ids"]),
+            features=json.loads(row["features"]),
+            score=row["score"],
+            surfaced=bool(row["surfaced"]),
+            channel=row["channel"],
+        )
 
     def close(self) -> None:
         self._conn.close()

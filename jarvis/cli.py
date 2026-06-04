@@ -41,7 +41,7 @@ BANNER = (
 )
 
 
-def _build_knowledge(llm: LLMClient) -> Knowledge:
+def _build_knowledge(llm: LLMClient) -> tuple[Knowledge, dict]:
     cache = SQLiteCache(config.db_path.parent / "cache.db")
     connectors = [
         CachingConnector(HackerNewsConnector(), cache, config.cache_ttl_hn),
@@ -50,7 +50,9 @@ def _build_knowledge(llm: LLMClient) -> Knowledge:
     ]
     router = Router(llm, connectors)
     answerer = Answerer(llm)
-    return Knowledge(router, {c.name: c for c in connectors}, answerer)
+    by_name = {c.name: c for c in connectors}
+    # Same connectors power both knowledge Q&A and proactivity collector candidates (public terms).
+    return Knowledge(router, by_name, answerer), by_name
 
 
 def build_service(source: str) -> tuple[JarvisService, SQLiteStructuredStore]:
@@ -58,7 +60,7 @@ def build_service(source: str) -> tuple[JarvisService, SQLiteStructuredStore]:
     front-ends: the CLI, the GUI (`source="gui"`), and the voice loop (`source="voice"`)."""
     config.ensure_dirs()
     llm = OllamaClient()
-    knowledge = _build_knowledge(llm)
+    knowledge, connectors = _build_knowledge(llm)
     store = SQLiteStructuredStore(config.db_path)
     # Cosine collection for the §7.1 retrieval; the memory store owns embedding + ranking.
     vector = ChromaVectorStore(config.vector_dir, collection="memory", space="cosine")
@@ -74,6 +76,7 @@ def build_service(source: str) -> tuple[JarvisService, SQLiteStructuredStore]:
         signals=SignalLog(store),
         source=source,
         llm=llm,  # raw LLM for finance parse/classify (structured); phrasing uses the orchestrator
+        connectors=connectors,  # collector candidates fetch public watch terms through these
     )
     return service, store
 
@@ -294,6 +297,13 @@ def _handle_command(text: str, service: JarvisService) -> None:
         _handle_budget(argument, service)
     elif command == "watch":
         _handle_watch(argument, service)
+    elif command == "suggest":
+        suggestions = service.suggestions()
+        if not suggestions:
+            print("(nothing worth surfacing right now)")
+        for s in suggestions:
+            print(f"  - {s.content}")
+            print(f"    why: {s.why}")
     elif command == "reflect":
         print(f"reflected: {service.reflect(force=True)} insight(s)")
     elif command == "profile":

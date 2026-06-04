@@ -395,6 +395,23 @@ def test_add_watch_uppercases_symbols_and_logs_metadata_only(tmp_path, fake_embe
     assert "NVDA" not in str(sig.payload)  # the term stays out of the signal log
 
 
+def test_suggestions_persists_cards_and_logs_metadata_only(tmp_path, fake_embedder):
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime(2026, 6, 3, 9, 0, tzinfo=UTC)  # injected: deterministic, outside quiet hours
+    service, store = _service(tmp_path, fake_embedder)
+    # a near-term high-priority goal -> a goal_deadline candidate that clears the bar
+    store.save_goal("ship phase 5b", priority="high", deadline=now + timedelta(hours=2))
+
+    cards = service.suggestions(now=now)
+
+    assert cards, "a near-term high-priority goal should surface"
+    persisted = store.get_recent_suggestions(since=now - timedelta(hours=1))
+    assert {c.id for c in cards} <= {p.id for p in persisted}  # each surfaced card was persisted
+    shown = [s for s in store.get_signals() if s.kind == "suggestion_shown"]
+    assert shown and all("ship phase 5b" not in str(s.payload) for s in shown)  # metadata only
+
+
 def test_recent_signals_is_a_non_emitting_inspector(tmp_path, fake_embedder):
     service, store = _service(tmp_path, fake_embedder)
     service.add_goal("x")  # 1 signal
