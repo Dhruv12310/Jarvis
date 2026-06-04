@@ -19,6 +19,7 @@ class BriefingData:
     events: list  # CalendarEvent-like
     goals: list  # Goal-like
     digest: str | None  # Phase-1 knowledge digest text, or None
+    finance: str | None = None  # deterministic finance line (engine-computed), or None
 
 
 _PROMPT = (
@@ -43,6 +44,8 @@ def to_data_block(data: BriefingData) -> str:
         lines += [f"  - {goal.description}" for goal in data.goals]
     else:
         lines.append("  (none)")
+    if data.finance is not None:
+        lines += ["", "Finance:", f"  {data.finance}"]
     lines += ["", "Knowledge digest:", f"  {data.digest}" if data.digest else "  (none)"]
     return "\n".join(lines)
 

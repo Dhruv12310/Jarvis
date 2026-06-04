@@ -58,6 +58,14 @@ class AppController:
     def ask_markets_news(self) -> None:
         self.ask(_MARKETS_QUERY)  # already guarded via ask()
 
+    def show_finance(self) -> None:
+        try:
+            answer = self._service.finance_answer("How much have I spent this month?")
+        except Exception as exc:
+            self._post_error(exc)
+            return
+        self._feed.post_card(Card("Finance", answer, "finance"))
+
     def add_goal(self, text: str) -> None:
         text = text.strip()
         if not text:

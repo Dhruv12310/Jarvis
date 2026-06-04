@@ -11,9 +11,12 @@ stays in the engines; the LLM is only the existing routing/summarizing/briefing 
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
 
 from jarvis.briefing import BriefingData, phrase
+from jarvis.finance import engine, qa
+from jarvis.finance.categorize import Categorizer
+from jarvis.finance.transaction import Account, Budget, BudgetStatus
 from jarvis.knowledge.pipeline import Knowledge
 from jarvis.memory.record import MemoryRecord
 from jarvis.memory.store import MemoryStore
@@ -38,6 +41,7 @@ class JarvisService:
         memory: MemoryStore,
         signals: SignalLog,
         source: str,
+        llm=None,
     ) -> None:
         self._orchestrator = orchestrator
         self._knowledge = knowledge
@@ -45,6 +49,8 @@ class JarvisService:
         self._memory = memory
         self._signals = signals
         self._source = source
+        # raw LLM for finance's structured parse/classify; prose phrasing uses the orchestrator.
+        self._llm = llm
 
     # --- capabilities (each emits exactly one signal, including on failure) -----------------
 
@@ -68,6 +74,7 @@ class JarvisService:
                 events=self._brief_events(now),
                 goals=self._store.get_goals(status="active"),
                 digest=self._brief_digest(),
+                finance=self._brief_finance(),
             )
             return phrase(data, self._orchestrator.chat)
 
@@ -120,6 +127,51 @@ class JarvisService:
             sig["updated"] = count
             return count
 
+    # --- finance (every figure from the engine; the LLM only parses + phrases) --------------
+
+    def finance_answer(self, question: str) -> str:
+        """Answer a finance question: LLM parses -> engine computes the figure -> LLM phrases it."""
+        with self._signal("finance_query") as sig:
+            query = qa.parse_question(question, self._llm)
+            value, label = qa.compute(
+                query, self._store.get_transactions(), self._store.get_accounts(), date.today()
+            )
+            sig["metric"] = query.metric  # no amount in the signal log
+            return self._orchestrator.chat(qa.phrase_prompt(question, label, value)).strip()
+
+    def categorize_unknowns(self) -> int:
+        """Fill 'uncategorized' transactions using the LLM (per merchant); return the count."""
+        with self._signal("categorize") as sig:
+            categorizer = Categorizer(overrides=self._store.get_category_overrides(), llm=self._llm)
+            merchants = {t.merchant for t in self._store.get_transactions(category="uncategorized")}
+            count = 0
+            for merchant in merchants:
+                category = categorizer.categorize(merchant)
+                if category != "uncategorized":
+                    count += self._store.recategorize_merchant(merchant, category)
+            sig["updated"] = count
+            return count
+
+    def accounts(self) -> list[Account]:
+        with self._signal("accounts") as sig:
+            accounts = self._store.get_accounts()
+            sig["count"] = len(accounts)
+            return accounts
+
+    def set_budget(self, category: str, limit, period: str = "monthly") -> Budget:
+        with self._signal("budget_set") as sig:
+            budget = Budget(category=category, limit=limit, period=period)
+            self._store.save_budget(budget)
+            sig["category"] = category
+            return budget
+
+    def budget_status(self) -> list[BudgetStatus]:
+        """Deterministic budget-vs-actual over this month's transactions."""
+        with self._signal("budget_status"):
+            today = date.today()
+            month = self._store.get_transactions(start=today.replace(day=1), end=today)
+            return engine.budget_vs_actual(month, self._store.get_budgets())
+
     def recent_signals(self, limit: int = 20) -> list[SignalEvent]:
         """Read-only inspector over the raw signal log. Does NOT emit (it would self-reference)."""
         return self._store.get_signals(limit=limit)
@@ -163,3 +215,19 @@ class JarvisService:
             return answer.text if answer else None
         except Exception:
             return None  # digest unavailable -> empty section, briefing still renders
+
+    def _brief_finance(self) -> str | None:
+        # Deterministic, engine-computed: month-to-date spend + top category. None when no data.
+        try:
+            today = date.today()
+            month = self._store.get_transactions(start=today.replace(day=1), end=today)
+            if not month:
+                return None
+            total = engine.total_spending(month)
+            by_category = engine.spending_by_category(month)
+            if by_category:
+                top, amount = max(by_category.items(), key=lambda kv: kv[1])
+                return f"Spent ${total} so far this month; top category: {top} (${amount})."
+            return f"Spent ${total} so far this month."
+        except Exception:
+            return None

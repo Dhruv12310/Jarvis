@@ -17,16 +17,16 @@ Reads/tracks only — never moves money, never gives advice. (Phases 0–3 shipp
 
 ### ▸ Checkpoint: real data in, locally
 
-## [ ] Slice 2 — Deterministic finance engine  ·  `feat(finance): deterministic Tier-0 finance engine (no LLM on the math path)`
-- [ ] `finance/engine.py` (imports NO LLM) — spending by category/period, total, net worth, period-over-period (delta+pct), recurring detection, budget-vs-actual; every return a Decimal
-- [ ] `finance/transaction.py` += `Budget`, `BudgetStatus`, `Recurring`; `stores` save/get budgets
-- [ ] boundary guard: `engine.py` imports no `llm`/`ollama` (structural proof of the absolute constraint)
-- [ ] Verify: `test_finance_engine.py` — every function vs fixtures, LLM absent, exact Decimals, reproducible; recurring + budget math
+## [x] Slice 2 — Deterministic finance engine  ·  `feat(finance): deterministic Tier-0 finance engine (no LLM on the math path)`
+- [x] `finance/engine.py` (imports NO LLM) — spending by category/period, total, net worth, period-over-period (delta+pct), recurring detection, budget-vs-actual; every return a Decimal
+- [x] `finance/transaction.py` += `Budget`, `BudgetStatus`, `Recurring`; `stores` save/get budgets
+- [x] boundary guard: `engine.py` imports no `llm`/`ollama` (structural proof of the absolute constraint)
+- [x] Verify: `test_finance_engine.py` — every function vs fixtures, LLM absent, exact Decimals, reproducible; recurring + budget math
 
-## [ ] Slice 3 — Categorization (rules + LLM fallback; correctable)  ·  `feat(finance): deterministic categorization with an LLM fallback for unknown merchants`
-- [ ] `finance/categorize.py` — fixed category set; merchant→category rules; override lookup; unknown → LLM classifies the merchant STRING (JSON-constrained); precedence override > rule > LLM > uncategorized
-- [ ] `stores` — `save_category_override`/`get_category_overrides`; `:recat` correction persists + re-categorizes; import categorizes on ingest
-- [ ] Verify: `test_categorize.py` — rule hit; override beats rule; unknown → fake LLM (sees only the string, no amount); correction persists
+## [x] Slice 3 — Categorization (rules + LLM fallback; correctable)  ·  `feat(finance): deterministic categorization with an LLM fallback for unknown merchants`
+- [x] `finance/categorize.py` — fixed category set; merchant→category rules; override lookup; unknown → LLM classifies the merchant STRING (JSON-constrained); precedence override > rule > LLM > uncategorized
+- [x] `stores` — `save_category_override`/`get_category_overrides`/`recategorize_merchant`; `service.recategorize` + `:recat` persists + re-categorizes; import categorizes on ingest (rules+overrides, no LLM)
+- [x] Verify: `test_categorize.py` — rule hit; override beats rule; unknown → fake LLM (sees only the string, no amount); correction persists + signal carries no merchant
 
 ## [ ] Slice 4 — Finance Q&A + briefing  ·  `feat(finance): finance Q&A + briefing (engine computes, LLM only phrases)`
 - [ ] `finance/qa.py` — LLM parse → `FinanceQuery{metric, category?, period?}` (validated); engine computes; LLM phrases the EXACT figure (no recompute)

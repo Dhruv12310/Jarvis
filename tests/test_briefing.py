@@ -49,6 +49,18 @@ def test_data_block_handles_all_empty_sections():
     assert "(none)" in block  # goals + digest
 
 
+def test_data_block_includes_a_finance_line_when_present():
+    data = _data()
+    data = BriefingData(
+        when=data.when, events=[], goals=[], digest=None, finance="Spent $42.50 so far this month."
+    )
+
+    block = to_data_block(data)
+
+    assert "Finance:" in block
+    assert "Spent $42.50 so far this month." in block
+
+
 def test_all_day_event_is_labeled():
     data = _data(
         events=[_event("Holiday", datetime(2026, 6, 3), datetime(2026, 6, 4), all_day=True)]

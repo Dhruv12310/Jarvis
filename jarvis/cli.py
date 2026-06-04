@@ -3,8 +3,8 @@
 The CLI only parses input and renders results; all capability logic + signal capture live in
 `JarvisService`, the same facade the GUI and voice loop call. Free-text questions go through
 `ask` (knowledge pipeline -> grounded cited answer, else labeled plain chat). Lines starting with
-``:`` are commands: memory (:note/:notes/:recall), goals (:goal/:goals), calendar (:cal),
-the daily briefing (:brief), and the :signals inspector.
+``:`` are commands: memory (:note/:notes/:recall), goals (:goal/:goals), calendar (:cal), finance
+(:spend/:accounts/:budget/:categorize/:recat), the briefing (:brief), and the :signals inspector.
 """
 
 from __future__ import annotations
@@ -31,10 +31,11 @@ from jarvis.stores.chroma_store import ChromaVectorStore
 from jarvis.stores.sqlite_store import SQLiteStructuredStore
 
 BANNER = (
-    "Jarvis (Phase 3). Ask about markets, AI/business news, or HN/YC and answers come from live\n"
+    "Jarvis (Phase 4). Ask about markets, AI/business news, or HN/YC and answers come from live\n"
     "sources with citations. General questions fall back to plain chat.\n"
     "Commands:  :note <text>  |  :notes  |  :recall <query>\n"
     "           :goal add <text>  |  :goals  |  :goal done <id>\n"
+    "           :spend <q>  |  :accounts  |  :budget  |  :categorize  |  :recat <m> <cat>\n"
     "           :cal  |  :brief  |  :signals  |  exit"
 )
 
@@ -71,6 +72,7 @@ def build_service(source: str) -> tuple[JarvisService, SQLiteStructuredStore]:
         memory=memory,
         signals=SignalLog(store),
         source=source,
+        llm=llm,  # raw LLM for finance parse/classify (structured); phrasing uses the orchestrator
     )
     return service, store
 
@@ -144,6 +146,31 @@ def _handle_goal(argument: str, service: JarvisService) -> None:
         print("usage: :goal add <text> | :goal done <id>")
 
 
+def _handle_budget(argument: str, service: JarvisService) -> None:
+    sub, _, rest = argument.partition(" ")
+    if sub.lower() == "set":
+        category, _, amount = rest.strip().rpartition(" ")
+        if not category or not amount:
+            print("usage: :budget set <category> <amount>")
+            return
+        from decimal import Decimal, InvalidOperation
+
+        try:
+            budget = service.set_budget(category.strip(), Decimal(amount.strip()))
+        except InvalidOperation:
+            print("usage: :budget set <category> <amount>  (amount must be a number)")
+            return
+        print(f"budget set: {budget.category} = {budget.limit}/{budget.period}")
+        return
+    statuses = service.budget_status()
+    if not statuses:
+        print("(no budgets; :budget set <category> <amount>)")
+        return
+    for s in statuses:
+        flag = "  OVER" if s.over else ""
+        print(f"  {s.category}: {s.actual} of {s.limit} ({s.remaining} left){flag}")
+
+
 def _handle_command(text: str, service: JarvisService) -> None:
     command, _, argument = text[1:].partition(" ")
     command = command.lower()
@@ -193,6 +220,22 @@ def _handle_command(text: str, service: JarvisService) -> None:
             return
         count = service.recategorize(merchant, category)
         print(f"recategorized {count} transaction(s) for '{merchant}' -> {category}")
+    elif command == "spend":
+        if not argument:
+            print("usage: :spend <question>  (e.g. how much did I spend on dining this month)")
+            return
+        print(f"jarvis> {service.finance_answer(argument)}")
+    elif command == "categorize":
+        print(f"categorized {service.categorize_unknowns()} transaction(s)")
+    elif command == "accounts":
+        accounts = service.accounts()
+        if not accounts:
+            print("(no accounts; import an OFX/QFX file)")
+            return
+        for account in accounts:
+            print(f"  {account.name} ({account.type}): {account.balance}")
+    elif command == "budget":
+        _handle_budget(argument, service)
     elif command == "signals":
         events = service.recent_signals(limit=20)
         if not events:

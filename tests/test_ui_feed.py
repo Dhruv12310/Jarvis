@@ -32,6 +32,10 @@ class _FakeService:
         self.added_goals.append(text)
         return SimpleNamespace(id=len(self.added_goals), description=text)
 
+    def finance_answer(self, question: str) -> str:
+        self.asked.append(question)
+        return "You spent $42.50 this month."
+
 
 def _controller(service=None):
     feed = Feed()
@@ -154,6 +158,14 @@ def test_add_goal_ignores_blank():
 
     assert feed.cards == []
     assert service.added_goals == []
+
+
+def test_show_finance_posts_a_finance_card():
+    controller, feed = _controller(_FakeService())
+
+    controller.show_finance()
+
+    assert feed.cards == [Card("Finance", "You spent $42.50 this month.", "finance")]
 
 
 # --- error handling: a backend failure posts a (redacted) error card, never crashes -----------

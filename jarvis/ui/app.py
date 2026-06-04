@@ -65,6 +65,7 @@ def launch(service: JarvisService) -> None:
                 ft.Button(
                     "Markets / News", on_click=lambda e: _action(controller.ask_markets_news)
                 ),
+                ft.Button("Finance", on_click=lambda e: _action(controller.show_finance)),
                 ft.Button("Add goal", on_click=lambda e: _add_goal()),
             ],
             wrap=True,
