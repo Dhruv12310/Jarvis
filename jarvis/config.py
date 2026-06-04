@@ -60,6 +60,18 @@ class Config:
             os.environ.get("JARVIS_TTS_MODEL", str(_DATA / "piper" / "en_US-lessac-high.onnx"))
         )
     )
+    # Finance (Phase 4) Plaid - the opt-in OUTBOUND source. Secrets via .env (git-ignored), never
+    # committed. Empty = Plaid disabled (the local CSV/OFX import is the default path).
+    plaid_client_id: str = field(
+        default_factory=lambda: os.environ.get("JARVIS_PLAID_CLIENT_ID", "")
+    )
+    plaid_secret: str = field(default_factory=lambda: os.environ.get("JARVIS_PLAID_SECRET", ""))
+    plaid_access_token: str = field(
+        default_factory=lambda: os.environ.get("JARVIS_PLAID_ACCESS_TOKEN", "")
+    )
+    plaid_environment: str = field(
+        default_factory=lambda: os.environ.get("JARVIS_PLAID_ENV", "sandbox")
+    )
 
     # Phase 1: public-data connectors. An empty key means that connector reports "no key" rather
     # than fetching (it never invents data); the user fills these in .env.

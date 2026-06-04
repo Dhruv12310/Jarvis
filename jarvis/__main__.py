@@ -5,6 +5,7 @@ Usage:
     python -m jarvis ui           desktop GUI (chat + Jarvis feed)
     python -m jarvis voice        push-to-talk voice loop (local STT + TTS)
     python -m jarvis import <f>   import transactions from a local CSV/OFX/QFX file
+    python -m jarvis import --plaid  sync transactions from Plaid (opt-in; needs .env creds)
     python -m jarvis selftest     run the Phase 0 Definition-of-Done self-test
     python -m jarvis calendar-auth  one-time Google Calendar OAuth (read-only)
 """
@@ -49,11 +50,22 @@ def main() -> int:
             return 1
         from jarvis.config import config
         from jarvis.finance.categorize import Categorizer, categorize_transactions
-        from jarvis.finance.sources import source_for
         from jarvis.stores.sqlite_store import SQLiteStructuredStore
 
         config.ensure_dirs()
-        transactions, accounts = source_for(args[1]).load()
+        if args[1] == "--plaid":
+            if not config.plaid_access_token:
+                print("Plaid not configured. Set JARVIS_PLAID_* in .env (docs/plaid-setup.md).")
+                return 1
+            from jarvis.finance.sources.plaid_source import (
+                PlaidSource,  # lazy: only loads plaid here
+            )
+
+            transactions, accounts = PlaidSource().load()
+        else:
+            from jarvis.finance.sources import source_for
+
+            transactions, accounts = source_for(args[1]).load()
         store = SQLiteStructuredStore(config.db_path)
         try:
             # Categorize deterministically (rules + saved corrections) at import - no LLM, local.

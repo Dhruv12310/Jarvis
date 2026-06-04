@@ -28,15 +28,15 @@ Reads/tracks only — never moves money, never gives advice. (Phases 0–3 shipp
 - [x] `stores` — `save_category_override`/`get_category_overrides`/`recategorize_merchant`; `service.recategorize` + `:recat` persists + re-categorizes; import categorizes on ingest (rules+overrides, no LLM)
 - [x] Verify: `test_categorize.py` — rule hit; override beats rule; unknown → fake LLM (sees only the string, no amount); correction persists + signal carries no merchant
 
-## [ ] Slice 4 — Finance Q&A + briefing  ·  `feat(finance): finance Q&A + briefing (engine computes, LLM only phrases)`
-- [ ] `finance/qa.py` — LLM parse → `FinanceQuery{metric, category?, period?}` (validated); engine computes; LLM phrases the EXACT figure (no recompute)
-- [ ] `service.py` `finance_answer` (metadata-only signal, no amounts); `cli.py` `:spend`/`:accounts`/`:budget`; GUI finance shortcut; briefing finance line
-- [ ] Verify: `test_finance_qa.py` — fake LLM; answer figure == engine output (no model-invented number); engine ran with no LLM; briefing includes the line
+## [x] Slice 4 — Finance Q&A + briefing  ·  `feat(finance): finance Q&A + briefing (engine computes, LLM only phrases)`
+- [x] `finance/qa.py` — LLM parse → `FinanceQuery{metric, category?, period?}` (validated); engine computes; LLM phrases the EXACT figure (no recompute)
+- [x] `service.py` `finance_answer` (metric-only signal, no amounts) + `categorize_unknowns` + `accounts`/`set_budget`/`budget_status`; `cli.py` `:spend`/`:accounts`/`:budget`/`:categorize`; GUI Finance shortcut; briefing finance line
+- [x] Verify: `test_finance_qa.py` — fake LLM; answer figure == engine output (no model-invented number); signal carries no amount; briefing finance line + GUI finance card
 
-### ▸ Checkpoint: Phase 4 complete → `/test` → `/review` → `/code-simplify` → `/ship` → record learnings in docs/DECISIONS.md
+### ▸ Checkpoint: Phase 4 feature-complete → `/test` → `/review` → `/code-simplify` → `/ship` → record learnings in docs/DECISIONS.md
 
-## [ ] Slice 5 — Plaid source  ·  `feat(finance): Plaid transaction source behind the source interface (opt-in, gated)`   [OQ1: opt-in automation]
-- [ ] (source-driven) verify Plaid sandbox/production tiers + `/transactions/sync` + `plaid-python` + auth
-- [ ] `finance/sources/plaid_source.py` (only plaid importer, boundary-guarded) — same `load()` contract; normalize to Decimal model
-- [ ] `config` Plaid client_id/secret/access_token via `.env` (redacted); `__main__` plaid path; pyproject += `plaid-python`; boundary guard: plaid only under `finance/`; docs setup note
-- [ ] Verify: `test_plaid_source.py` (normalize a fake Plaid response, no network) + `@integration` gated on token; **live verification PENDING user's Plaid creds**
+## [x] Slice 5 — Plaid source  ·  `feat(finance): Plaid transaction source behind the source interface (opt-in, gated)`   [OQ1: opt-in automation]
+- [x] (source-driven) verified `plaid-python` 39 API (Configuration/PlaidApi, transactions_sync, accounts_get; amount sign = positive-outflow)
+- [x] `finance/sources/plaid_source.py` (only plaid importer, boundary-guarded) — same `load()` contract; `_normalize` flips Plaid's sign to ours
+- [x] `config` Plaid client_id/secret/access_token/env via `.env`; `__main__` `import --plaid` (token-gated); pyproject += `plaid-python`; boundary guard covers plaid; `docs/plaid-setup.md`
+- [x] Verify: `test_plaid_source.py` (normalize a fake Plaid response, sign flip, no network) + `@integration` gated on token; **live verification PENDING user's Plaid creds**

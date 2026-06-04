@@ -32,6 +32,7 @@ _APPROVED_RUNTIME_DEPS = {
     "numpy",
     "piper-tts",
     "ofxtools",
+    "plaid-python",
 }
 _SQL_ALLOWED = {"sqlite_store.py", "sqlite_cache.py"}
 
