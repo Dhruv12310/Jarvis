@@ -114,6 +114,37 @@ class Config:
     cache_ttl_gdelt: int = field(
         default_factory=lambda: int(os.environ.get("JARVIS_CACHE_TTL_GDELT", "900"))
     )
+    # arXiv papers move slowly and arXiv asks for ~1 req/3s, so cache them for an hour.
+    cache_ttl_arxiv: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_CACHE_TTL_ARXIV", "3600"))
+    )
+    arxiv_max_results: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_ARXIV_MAX_RESULTS", "10"))
+    )
+    # Goal-aware research ranking (Phase C). Deterministic relevance = w_overlap*term-overlap +
+    # w_recency*exp(-lambda*age) + w_source*source-prior. Per-source priors favor papers, then news.
+    research_w_overlap: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_RESEARCH_W_OVERLAP", "1.0"))
+    )
+    research_w_recency: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_RESEARCH_W_RECENCY", "0.5"))
+    )
+    research_w_source: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_RESEARCH_W_SOURCE", "0.4"))
+    )
+    research_recency_lambda: float = field(
+        default_factory=lambda: float(os.environ.get("JARVIS_RESEARCH_RECENCY_LAMBDA", "0.02"))
+    )
+    research_source_weights: dict = field(
+        default_factory=lambda: {
+            "arxiv": 1.0,
+            "news": 0.8,
+            "gdelt": 0.8,
+            "hn": 0.7,
+            "knowledge": 0.6,
+            "markets": 0.6,
+        }
+    )
 
     # Phase 2 memory retrieval (Core §7.1). Weights default to 1.0; lambda tunes recency
     # decay (per hour of age).

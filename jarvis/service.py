@@ -26,7 +26,7 @@ from jarvis.knowledge.pipeline import Knowledge
 from jarvis.memory.record import MemoryRecord
 from jarvis.memory.store import MemoryStore
 from jarvis.orchestrator import Orchestrator
-from jarvis.proactivity import feedback, suggest
+from jarvis.proactivity import feedback, research_rank, suggest
 from jarvis.proactivity import user_model as um
 from jarvis.proactivity.candidate import EngineState, Fetched
 from jarvis.proactivity.generators import collector_queries
@@ -445,6 +445,49 @@ class JarvisService:
         matches = self.symbol_search(query)
         return matches[0].symbol if matches else candidate.upper()
 
+    def project_deepdive(self, goal_id: int) -> dict:
+        """Tier-2 cloud escalation (opt-in): a research brief for a goal, synthesized over its
+        deterministic feed of PUBLIC arXiv papers + news. Like company_deepdive, the Model Router is
+        the only cloud seam and redacts before sending; crucially only the goal's PUBLIC derived
+        terms + public item titles cross out - NEVER the raw goal description (private text that
+        redact() would not sanitize). No router/key, no such goal, or no public material -> a
+        graceful note with report=None and escalated=False; never raises. One signal (id only)."""
+        with self._signal("project_deepdive") as sig:
+            sig["goal_id"] = goal_id
+
+            def disabled(note: str, *, escalated: bool = False) -> dict:
+                sig["escalated"] = escalated
+                return {"goal_id": goal_id, "report": None, "note": note, "escalated": escalated}
+
+            goal = next(
+                (g for g in self._store.get_goals(status="active") if g.id == goal_id), None
+            )
+            if goal is None:
+                return disabled("Unknown or inactive goal.")
+            if self._model_router is None or not self._model_router.available:
+                return disabled(
+                    "Project deep dive is disabled. Set ANTHROPIC_API_KEY to enable cloud."
+                )
+            terms = extract_terms(goal.description)
+            # Only papers/news carry titles _project_block renders; a knowledge snippet adds nothing
+            # to the outbound block, so it must NOT alone justify spending a cloud call.
+            public_items = [
+                i
+                for i in self._feed_for_goal(goal, config.goal_feed_per_goal_cap)
+                if i.kind in ("paper", "news", "story")
+            ]
+            if not public_items:
+                return disabled("No public research or news found for this goal to analyze.")
+            try:
+                report = self._model_router.deepdive(
+                    _project_block(terms, public_items), _PROJECT_DEEPDIVE_INSTRUCTION
+                )
+            except Exception as exc:
+                sig["error"] = type(exc).__name__
+                return disabled("Cloud deep-dive failed; the deterministic feed is unaffected.")
+            sig["escalated"] = True
+            return {"goal_id": goal_id, "report": report, "note": None, "escalated": True}
+
     # --- file operations (cockpit shortcut bar): deterministic pathlib, full-disk reach --------
     # The off-loopback WRITE guard is a network-bind concern and lives in the API layer; the facade
     # just honors the kill switch. No file CONTENT ever enters the signal log - only the basename +
@@ -535,7 +578,7 @@ class JarvisService:
         each with a deterministic WHY. Unlike suggestions() (the strict PUSH ranker that abstains),
         this PULL view does NOT gate on usefulness: it is non-empty whenever a source has data.
 
-        Deterministic-first: term extraction, ranking-by-fetch-order, and the WHY are all code; the
+        Deterministic-first: term extraction, the relevance re-rank, and the WHY are all code; the
         LLM is touched at most for the optional grounded snippet (knowledge.ask), never for ranking.
         Trust boundary: only goal-derived PUBLIC terms (tickers/keywords) go outbound, never the raw
         goal text. Emits one signal ('goal_feed', metadata = goal + item counts, NO content). Never
@@ -563,14 +606,40 @@ class JarvisService:
         an exception - the whole method is wrapped so one bad goal can't sink the feed."""
         try:
             terms = extract_terms(goal.description)
-            items: list[GoalFeedItem] = []
-            items += self._feed_connectors(goal, terms, cap)
-            if len(items) < cap:
-                items += self._feed_knowledge(goal, terms, cap - len(items))
-            items += self._feed_suggestions(goal)  # standing PUSH cards already tied to this goal
+            fetched: list[GoalFeedItem] = []
+            fetched += self._feed_connectors(goal, terms, cap)
+            fetched += self._feed_research(goal, terms, cap)  # arXiv papers for the goal's topics
+            if len(fetched) < cap:
+                fetched += self._feed_knowledge(goal, terms, cap - len(fetched))
+            # Deterministic relevance re-rank of the FETCHED items only; owned suggestions are
+            # appended after and never reordered (the _dedup_cap owned-vs-fetched contract).
+            fetched = research_rank.rank(terms, fetched, now=datetime.now().astimezone())
+            items = fetched + self._feed_suggestions(goal)
             return self._dedup_cap(items, cap)
         except Exception:
             return []
+
+    def _feed_research(self, goal, terms: GoalTerms, cap: int) -> list[GoalFeedItem]:
+        """arXiv papers for the goal's topics. GOAL-scoped on purpose: fetched here rather than via
+        the shared collector_queries, so a watchlist topic does not also pull papers. One
+        GoalFeedItem per paper with a deterministic WHY; a failing fetch -> [] (via self._fetch)."""
+        why = self._why(goal)
+        out: list[GoalFeedItem] = []
+        for term in terms.topics:
+            for item in self._fetch("arxiv", term):
+                out.append(
+                    GoalFeedItem(
+                        title=item.title,
+                        detail=item.detail,
+                        why=f"{why} (matched '{term}')",
+                        source="arxiv",
+                        kind="paper",
+                        url=getattr(item, "url", None),
+                    )
+                )
+                if len(out) >= cap:
+                    return out
+        return out
 
     def _feed_connectors(self, goal, terms: GoalTerms, cap: int) -> list[GoalFeedItem]:
         """Markets for implied tickers + news/HN for topics, via the PUBLIC (connector, term) plan.
@@ -809,6 +878,30 @@ def _company_block(view: CompanyView) -> str:
     if view.news:
         lines.append("Recent news:")
         lines += [f"  - {article.title} ({article.source})" for article in view.news]
+    return "\n".join(lines)
+
+
+_PROJECT_DEEPDIVE_INSTRUCTION = (
+    "You are a research analyst. Using ONLY the public topics, papers, and news below, write a "
+    "concise project deep dive for this research area: the current state of the art, the most "
+    "relevant recent work, open problems, and concrete next steps. Do not invent any source or "
+    "finding that is not present in the data."
+)
+
+
+def _project_block(terms: GoalTerms, items: list) -> str:
+    """Render the PUBLIC research block the Model Router sends to the cloud: the goal's derived
+    topics (the trust-boundary-approved terms) plus the gathered public item titles. It deliberately
+    OMITS the raw goal description - private prose must never cross the boundary, and redact() only
+    scrubs secrets, not arbitrary private text. Pure; no secrets, no signal."""
+    topics = [*terms.topics, *terms.symbols]
+    lines = ["Research topics: " + (", ".join(topics) if topics else "(none)")]
+    papers = [i.title for i in items if i.kind == "paper"]
+    news = [i.title for i in items if i.kind in ("news", "story")]
+    if papers:
+        lines += ["", "Recent papers:"] + [f"  - {title}" for title in papers]
+    if news:
+        lines += ["", "Recent news:"] + [f"  - {title}" for title in news]
     return "\n".join(lines)
 
 

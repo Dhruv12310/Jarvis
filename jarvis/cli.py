@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from jarvis.cache.sqlite_cache import SQLiteCache
 from jarvis.config import config
+from jarvis.connectors.arxiv import ArxivConnector
 from jarvis.connectors.caching import CachingConnector
 from jarvis.connectors.fundamentals import FundamentalsConnector
 from jarvis.connectors.gdelt import GdeltConnector
@@ -40,7 +41,8 @@ BANNER = (
     "Commands:  :note <text>  |  :notes  |  :recall <query>\n"
     "           :goal add <text>  |  :goals  |  :goal done <id>\n"
     "           :spend <q>  |  :accounts  |  :budget  |  :categorize  |  :recat <m> <cat>\n"
-    "           :company <symbol|name>  |  :cal  |  :brief  |  :signals  |  exit"
+    "           :company <symbol|name>  |  :research <goal_id>\n"
+    "           :cal  |  :brief  |  :signals  |  exit"
 )
 
 
@@ -52,6 +54,7 @@ def _build_knowledge(llm: LLMClient) -> tuple[Knowledge, dict]:
         CachingConnector(NewsConnector(), cache, config.cache_ttl_news),
         CachingConnector(GdeltConnector(), cache, config.cache_ttl_gdelt),
         CachingConnector(FundamentalsConnector(), cache, config.cache_ttl_fundamentals),
+        CachingConnector(ArxivConnector(), cache, config.cache_ttl_arxiv),
     ]
     router = Router(llm, connectors)
     answerer = Answerer(llm)
@@ -343,6 +346,12 @@ def _handle_command(text: str, service: JarvisService) -> None:
             print("usage: :deepdive <symbol|name>  (cloud escalation; needs ANTHROPIC_API_KEY)")
             return
         result = service.company_deepdive(argument)
+        print(result["report"] if result["report"] else result["note"])
+    elif command == "research":
+        if not argument.isdigit():
+            print("usage: :research <goal_id>  (cloud research brief; needs ANTHROPIC_API_KEY)")
+            return
+        result = service.project_deepdive(int(argument))
         print(result["report"] if result["report"] else result["note"])
     elif command == "suggest":
         suggestions = service.suggestions()

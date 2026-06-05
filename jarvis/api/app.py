@@ -215,8 +215,14 @@ def create_app(
 
     @app.get("/api/goal-feed")
     async def goal_feed() -> dict:
-        # The PULL view: per active goal, deterministic relevant public info with a WHY.
+        # The PULL view: per active goal, deterministic relevant public info + WHY (incl. arXiv).
         return {"feed": to_jsonable(service.goal_feed())}
+
+    @app.post("/api/goals/{goal_id}/research")
+    async def goal_research(goal_id: int) -> dict:
+        # Tier-2 cloud escalation (opt-in): a research brief over the goal's public papers + news.
+        # Returns {report, note, escalated}; disabled gracefully when no ANTHROPIC_API_KEY.
+        return to_jsonable(service.project_deepdive(goal_id))
 
     # --- file operations (cockpit shortcut bar): full-disk reach, off-loopback guard above ----
     @app.get("/api/fs/list")

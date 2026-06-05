@@ -53,8 +53,8 @@ class GoalFeedItem:
     title: str
     detail: str  # one-line human fact (a connector Item.detail, or a grounded snippet)
     why: str  # deterministic: "relates to goal #<id>: <desc>" (+ the matched term)
-    source: str  # "markets" | "news" | "hn" | "knowledge" | "suggestion"
-    kind: str  # "market" | "news" | "story" | "snippet" | "suggestion"
+    source: str  # "markets" | "news" | "hn" | "arxiv" | "knowledge" | "suggestion"
+    kind: str  # "market" | "news" | "story" | "paper" | "snippet" | "suggestion"
     url: str | None = None
 
 

@@ -233,6 +233,7 @@ def test_proactivity_deterministic_modules_import_no_llm():
         "goal_terms.py",
         "features.py",
         "rank.py",
+        "research_rank.py",
         "feedback.py",
         "bandit.py",
     ):
