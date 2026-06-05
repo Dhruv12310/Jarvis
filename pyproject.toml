@@ -18,6 +18,9 @@ dependencies = [
     "google-auth-httplib2>=0.2",
     # UI (Phase 3): Flet desktop GUI, confined to jarvis/ui/ (boundary-guarded). Pinned <0.90 (pre-1.0).
     "flet>=0.85,<0.90",
+    # Web UI: FastAPI + uvicorn serve the React HUD cockpit, confined to jarvis/api/ (boundary-guarded).
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.30",
     # Voice (Phase 3): local STT + mic capture + TTS, confined to jarvis/voice/ (boundary-guarded).
     "faster-whisper>=1.2",
     "sounddevice>=0.5",
@@ -27,6 +30,9 @@ dependencies = [
     "ofxtools>=0.9",
     # Finance (Phase 4): Plaid - the opt-in OUTBOUND source, confined to jarvis/finance/ + token-gated.
     "plaid-python>=39.0",
+    # Tier 2 cloud escalation: the Anthropic SDK, confined to jarvis/router/ (boundary-guarded) - the
+    # only seam allowed to cross to the cloud, and only after PII redaction.
+    "anthropic>=0.40",
 ]
 
 [project.optional-dependencies]

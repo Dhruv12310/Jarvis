@@ -27,12 +27,15 @@ _APPROVED_RUNTIME_DEPS = {
     "google-auth-oauthlib",
     "google-auth-httplib2",
     "flet",
+    "fastapi",
+    "uvicorn",
     "faster-whisper",
     "sounddevice",
     "numpy",
     "piper-tts",
     "ofxtools",
     "plaid-python",
+    "anthropic",
 }
 _SQL_ALLOWED = {"sqlite_store.py", "sqlite_cache.py"}
 
@@ -45,6 +48,9 @@ _HTTPX_IMPORT = re.compile(r"^\s*(import httpx|from httpx)", re.MULTILINE)
 # a \b between "google" and "_" would let that approved dep be imported anywhere undetected.
 _GOOGLE_IMPORT = re.compile(r"^\s*(import|from)\s+google\w*", re.MULTILINE)
 _FLET_IMPORT = re.compile(r"^\s*(import|from)\s+flet\b", re.MULTILINE)
+# The web toolkit (FastAPI + uvicorn) stays under api/ so the HTTP transport is swappable and the
+# web front-end stays thin - exactly the seam the Flet guard enforces for the desktop GUI.
+_API_IMPORT = re.compile(r"^\s*(import|from)\s+(fastapi|uvicorn)\b", re.MULTILINE)
 # Local audio/voice toolkits stay under voice/ so audio + transcripts never leak elsewhere.
 # numpy is general-purpose and intentionally not restricted.
 _VOICE_IMPORT = re.compile(
@@ -53,6 +59,9 @@ _VOICE_IMPORT = re.compile(
 # The OFX parser (and later the Plaid client) stay under finance/ - the source seam, so the engine
 # and the rest of the app never depend on a parsing/aggregator lib.
 _FINANCE_SOURCE_IMPORT = re.compile(r"^\s*(import|from)\s+(ofxtools|plaid)\b", re.MULTILINE)
+# The Anthropic SDK stays under router/ - the Tier-2 Model Router is the ONLY seam allowed to reach
+# the cloud (and only after redaction). Making this structural enforces the trust boundary.
+_ANTHROPIC_IMPORT = re.compile(r"^\s*(import|from)\s+anthropic\b", re.MULTILINE)
 
 
 def _py_files_excluding(name: str) -> list[Path]:
@@ -135,6 +144,18 @@ def test_flet_imported_only_under_ui():
     assert offenders == [], f"flet imported outside ui/: {offenders}"
 
 
+def test_api_libs_imported_only_under_api():
+    # The web toolkit stays behind the api/ seam so the HTTP transport is swappable (and the web
+    # front-end stays thin) - the same rule the Flet guard enforces for the desktop GUI.
+    offenders = [
+        str(path.relative_to(_JARVIS))
+        for path in _JARVIS.rglob("*.py")
+        if path.parent.name != "api" and _API_IMPORT.search(path.read_text(encoding="utf-8"))
+    ]
+
+    assert offenders == [], f"web API libs imported outside api/: {offenders}"
+
+
 def test_voice_libs_imported_only_under_voice():
     # Local STT/TTS/audio stay behind the voice/ seam: audio + transcripts never leak elsewhere.
     offenders = [
@@ -170,6 +191,26 @@ def test_finance_source_libs_imported_only_under_finance():
     assert offenders == [], f"finance source libs imported outside finance/: {offenders}"
 
 
+def test_anthropic_imported_only_under_router():
+    # Tier 2 is the controlled exception: only the Model Router (router/) may reach the cloud, and
+    # only after redaction. Confining the SDK makes "nothing private leaves except via the router"
+    # structural rather than a convention.
+    offenders = [
+        str(path.relative_to(_JARVIS))
+        for path in _JARVIS.rglob("*.py")
+        if path.parent.name != "router"
+        and _ANTHROPIC_IMPORT.search(path.read_text(encoding="utf-8"))
+    ]
+
+    assert offenders == [], f"anthropic imported outside router/: {offenders}"
+
+
+def test_anthropic_guard_catches_import_forms():
+    # Pin the regex: both import forms (including the lazy, indented one) must be flagged.
+    for line in ("import anthropic", "    import anthropic", "from anthropic import Anthropic"):
+        assert _ANTHROPIC_IMPORT.search(line), f"guard failed to flag: {line!r}"
+
+
 def test_finance_engine_imports_no_llm():
     # The absolute Phase 4 rule, made structural: the deterministic engine never imports the LLM, so
     # it cannot possibly compute, estimate, or infer a financial figure via a model.
@@ -189,6 +230,7 @@ def test_proactivity_deterministic_modules_import_no_llm():
         "user_model.py",
         "candidate.py",
         "generators.py",
+        "goal_terms.py",
         "features.py",
         "rank.py",
         "feedback.py",

@@ -12,6 +12,8 @@ from __future__ import annotations
 from jarvis.cache.sqlite_cache import SQLiteCache
 from jarvis.config import config
 from jarvis.connectors.caching import CachingConnector
+from jarvis.connectors.fundamentals import FundamentalsConnector
+from jarvis.connectors.gdelt import GdeltConnector
 from jarvis.connectors.hn import HackerNewsConnector
 from jarvis.connectors.markets import MarketsConnector
 from jarvis.connectors.news import NewsConnector
@@ -26,6 +28,7 @@ from jarvis.memory.store import MemoryStore
 from jarvis.orchestrator import Orchestrator
 from jarvis.redact import redact
 from jarvis.results import AgendaResult, AskResult
+from jarvis.router.model_router import ModelRouter
 from jarvis.service import JarvisService
 from jarvis.signals.log import SignalLog
 from jarvis.stores.chroma_store import ChromaVectorStore
@@ -37,7 +40,7 @@ BANNER = (
     "Commands:  :note <text>  |  :notes  |  :recall <query>\n"
     "           :goal add <text>  |  :goals  |  :goal done <id>\n"
     "           :spend <q>  |  :accounts  |  :budget  |  :categorize  |  :recat <m> <cat>\n"
-    "           :cal  |  :brief  |  :signals  |  exit"
+    "           :company <symbol|name>  |  :cal  |  :brief  |  :signals  |  exit"
 )
 
 
@@ -47,6 +50,8 @@ def _build_knowledge(llm: LLMClient) -> tuple[Knowledge, dict]:
         CachingConnector(HackerNewsConnector(), cache, config.cache_ttl_hn),
         CachingConnector(MarketsConnector(), cache, config.cache_ttl_markets),
         CachingConnector(NewsConnector(), cache, config.cache_ttl_news),
+        CachingConnector(GdeltConnector(), cache, config.cache_ttl_gdelt),
+        CachingConnector(FundamentalsConnector(), cache, config.cache_ttl_fundamentals),
     ]
     router = Router(llm, connectors)
     answerer = Answerer(llm)
@@ -77,6 +82,7 @@ def build_service(source: str) -> tuple[JarvisService, SQLiteStructuredStore]:
         source=source,
         llm=llm,  # raw LLM for finance parse/classify (structured); phrasing uses the orchestrator
         connectors=connectors,  # collector candidates fetch public watch terms through these
+        model_router=ModelRouter(),  # Tier-2 cloud seam; disabled gracefully when no key is set
     )
     return service, store
 
@@ -230,6 +236,36 @@ def _render_profile(model) -> None:
         print("    (none)")
 
 
+def _render_company(view) -> None:
+    if view.note and not view.name:
+        print(f"  {view.note}")
+        return
+    header = view.name or view.symbol
+    bits = [b for b in (view.industry, view.exchange, view.market_cap) if b]
+    print(f"{header} ({view.symbol})" + (f"  -  {', '.join(bits)}" if bits else ""))
+    if view.metrics:
+        m = view.metrics
+
+        def show(label, key, suffix=""):
+            value = m.get(key)
+            if value is not None:
+                print(f"    {label}: {value}{suffix}")
+
+        show("P/E (TTM)", "pe_ttm")
+        show("net margin", "net_margin_ttm", "%")
+        show("gross margin", "gross_margin_ttm", "%")
+        show("revenue/share", "revenue_per_share_ttm")
+        show("revenue growth", "revenue_growth_yoy", "% YoY")
+        if m.get("week52_low") is not None and m.get("week52_high") is not None:
+            print(f"    52-week: {m['week52_low']} - {m['week52_high']}")
+    if view.recommendation:
+        print(f"  analysts: {view.recommendation}")
+    if view.news:
+        print("  recent news:")
+        for article in view.news:
+            print(f"    - {article.title} ({article.source})")
+
+
 def _handle_command(text: str, service: JarvisService) -> None:
     command, _, argument = text[1:].partition(" ")
     command = command.lower()
@@ -297,6 +333,17 @@ def _handle_command(text: str, service: JarvisService) -> None:
         _handle_budget(argument, service)
     elif command == "watch":
         _handle_watch(argument, service)
+    elif command == "company":
+        if not argument:
+            print("usage: :company <symbol|name>  (e.g. :company AAPL  /  :company apple)")
+            return
+        _render_company(service.company(argument))
+    elif command == "deepdive":
+        if not argument:
+            print("usage: :deepdive <symbol|name>  (cloud escalation; needs ANTHROPIC_API_KEY)")
+            return
+        result = service.company_deepdive(argument)
+        print(result["report"] if result["report"] else result["note"])
     elif command == "suggest":
         suggestions = service.suggestions()
         if not suggestions:

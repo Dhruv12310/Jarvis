@@ -35,6 +35,15 @@ class CachingConnector(Connector):
     def last_was_cache_hit(self) -> bool:
         return self._last_hit
 
+    def __getattr__(self, attr: str):
+        # Transparent decorator: surface any extra capability the wrapped connector defines but this
+        # generic cache does not itself override (e.g. MarketsConnector.search). __getattr__ only
+        # fires for attributes missing on this object; guard _inner so a half-built instance can't
+        # recurse forever. Cached fetch() and the declared properties above shadow this untouched.
+        if attr == "_inner":
+            raise AttributeError(attr)
+        return getattr(self._inner, attr)
+
     def fetch(self, query: str) -> ConnectorResult:
         key = f"{self._inner.name}:{query.strip().lower()}"
         cached = self._cache.get(key)

@@ -46,6 +46,27 @@ def test_fetch_normalizes_articles_to_items():
     assert result.items[0].extra["source"] == "TechWire"
 
 
+def test_broad_question_falls_back_to_top_headlines():
+    # A conversational question with no specific subject -> /top-headlines, not a doomed /search.
+    def handler(request):
+        assert request.url.path == "/api/v4/top-headlines"
+        assert "q" not in request.url.params  # no search term on the headlines call
+        assert request.url.params.get("category") == "world"
+        return httpx.Response(200, json=_FIXTURE)
+
+    items = _connector(handler).fetch("what is going on in the world right now?").items
+    assert [i.title for i in items] == ["AI breakthrough announced", "Markets rally"]
+
+
+def test_specific_subject_uses_search_with_keywords():
+    def handler(request):
+        assert request.url.path == "/api/v4/search"
+        assert request.url.params.get("q") == "Ukraine"  # stopwords/filler stripped
+        return httpx.Response(200, json=_FIXTURE)
+
+    assert _connector(handler).fetch("latest news on Ukraine").items  # non-empty
+
+
 def test_no_key_returns_no_items():
     result = _connector(lambda r: httpx.Response(200, json=_FIXTURE), api_key="").fetch("AI")
     assert result.items == []

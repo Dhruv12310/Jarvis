@@ -3,6 +3,7 @@
 Usage:
     python -m jarvis              chat REPL
     python -m jarvis ui           desktop GUI (chat + Jarvis feed)
+    python -m jarvis serve        web cockpit (FastAPI + the built React HUD)
     python -m jarvis voice        push-to-talk voice loop (local STT + TTS)
     python -m jarvis import <f>   import transactions from a local CSV/OFX/QFX file
     python -m jarvis import --plaid  sync transactions from Plaid (opt-in; needs .env creds)
@@ -44,6 +45,13 @@ def main() -> int:
         finally:
             store.close()
         return 0
+    if args and args[0] == "serve":
+        # Web cockpit: FastAPI wraps the same JarvisService facade (source="web") and serves the
+        # built React HUD. fastapi/uvicorn stay under jarvis.api (boundary-guarded); this entry
+        # point never imports them directly. serve() owns the build_service + store lifecycle.
+        from jarvis.api.server import serve
+
+        return serve()
     if args and args[0] == "import":
         # Fully local: read a bank export, normalize, and store. No network, no LLM.
         if len(args) < 2:

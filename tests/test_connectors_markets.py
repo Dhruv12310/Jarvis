@@ -94,3 +94,49 @@ def test_malformed_quote_json_drops_named_symbol():
         api_key="k",
     )
     assert connector.fetch("AAPL").items == []
+
+
+def _search_connector(payload, api_key="testkey"):
+    def handler(request):
+        assert request.url.params.get("token")  # the key is always sent
+        return httpx.Response(200, json=payload)
+
+    return MarketsConnector(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), api_key=api_key
+    )
+
+
+def test_search_resolves_name_and_prioritizes_plain_us_tickers():
+    # Finnhub /search returns mixed listings; the plain ticker must float above an exchange-suffixed
+    # foreign listing so a name search surfaces the primary symbol.
+    connector = _search_connector(
+        {
+            "count": 3,
+            "result": [
+                {"symbol": "AAPL.SW", "description": "APPLE INC", "type": "Common Stock"},
+                {"symbol": "AAPL", "description": "Apple Inc", "type": "Common Stock"},
+                {"symbol": "APLE", "description": "Apple Hospitality REIT", "type": "Common Stock"},
+            ],
+        }
+    )
+
+    matches = connector.search("apple")
+
+    assert matches[0] == ("AAPL", "Apple Inc")  # plain ticker beats the .SW listing
+    assert ("AAPL.SW", "APPLE INC") in matches
+
+
+def test_search_no_key_returns_empty():
+    assert _search_connector({"result": [{"symbol": "AAPL"}]}, api_key="").search("apple") == []
+
+
+def test_search_blank_query_returns_empty():
+    assert _search_connector({"result": [{"symbol": "AAPL"}]}).search("   ") == []
+
+
+def test_search_non_200_returns_empty():
+    connector = MarketsConnector(
+        client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500, json={}))),
+        api_key="k",
+    )
+    assert connector.search("apple") == []

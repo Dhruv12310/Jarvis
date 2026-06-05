@@ -4,6 +4,7 @@ stamped with `source`. Core is faked/temp so nothing hits Ollama, the network, o
 
 import pytest
 
+from jarvis.connectors.base import ConnectorResult, Item, Source
 from jarvis.knowledge.pipeline import Answer
 from jarvis.memory.store import MemoryStore
 from jarvis.orchestrator import Orchestrator
@@ -41,6 +42,132 @@ def _service(tmp_path, fake_embedder, *, knowledge=None, llm=None, source="cli")
         llm=llm,  # facade's structured-parse LLM (finance); None for non-finance tests
     )
     return service, store
+
+
+class _FakeMarkets:
+    """Offline markets connector: one Item per known symbol (keyed by the bare-ticker query, exactly
+    like MarketsConnector.fetch), plus a name->candidates search. No network."""
+
+    def __init__(self, prices=None, matches=None):
+        self._prices = prices or {"NVDA": {"price": 120.0, "change_pct": 2.5, "prev_close": 117.07}}
+        self._matches = matches or {}
+
+    def fetch(self, query):
+        items = [
+            Item(title=sym, detail="x", url=None, extra=dict(self._prices[sym]))
+            for sym in query.upper().split()
+            if sym in self._prices
+        ]
+        return ConnectorResult(source=Source(name="Finnhub"), items=items, query=query)
+
+    def search(self, query, limit=8):
+        return self._matches.get(query.lower().strip(), [])
+
+
+def test_quotes_for_named_symbols_returns_one_quote_per_symbol(tmp_path, fake_embedder):
+    service, store = _service(tmp_path, fake_embedder)
+    service._connectors = {"markets": _FakeMarkets()}
+
+    [q] = service.quotes(["NVDA"])
+
+    assert q.symbol == "NVDA"
+    assert q.price == 120.0
+    assert q.prev_close == 117.07
+    assert q.change_pct == 2.5
+    assert round(q.change, 2) == 2.93  # price - prev_close, computed deterministically
+    assert q.currency == "USD"
+    # quotes() is a read-only inspector: a per-poll signal would flood the log, so it emits none.
+    assert [s for s in store.get_signals() if s.kind == "quotes"] == []
+
+
+def test_quotes_defaults_to_watched_symbols(tmp_path, fake_embedder):
+    service, _store = _service(tmp_path, fake_embedder)
+    service._connectors = {
+        "markets": _FakeMarkets({"AMD": {"price": 10.0, "change_pct": -1.0, "prev_close": 10.1}})
+    }
+    service.add_watch("symbol", "amd")  # upper-cased + persisted
+    service.add_watch("topic", "local LLMs")  # topics are ignored by quotes()
+
+    [q] = service.quotes()  # None -> watchlist symbol terms
+
+    assert q.symbol == "AMD" and q.change_pct == -1.0
+
+
+def test_quotes_unknown_symbol_is_absent_not_invented(tmp_path, fake_embedder):
+    service, _store = _service(tmp_path, fake_embedder)
+    service._connectors = {"markets": _FakeMarkets()}  # only NVDA known
+
+    assert service.quotes(["NOTREAL"]) == []
+
+
+def test_quotes_with_no_connector_is_empty(tmp_path, fake_embedder):
+    service, _store = _service(tmp_path, fake_embedder)  # connectors default {} -> no 'markets'
+
+    assert service.quotes(["NVDA"]) == []
+
+
+def test_quotes_swallows_a_failing_connector(tmp_path, fake_embedder):
+    class _Boom:
+        def fetch(self, query):
+            raise RuntimeError("finnhub 500")
+
+    service, _store = _service(tmp_path, fake_embedder)
+    service._connectors = {"markets": _Boom()}
+
+    assert service.quotes(["NVDA"]) == []  # never raises, never invents
+
+
+def test_symbol_search_resolves_name_to_candidates(tmp_path, fake_embedder):
+    service, store = _service(tmp_path, fake_embedder)
+    service._connectors = {"markets": _FakeMarkets(matches={"apple": [("AAPL", "Apple Inc")]})}
+
+    [m] = service.symbol_search("apple")
+
+    assert m.symbol == "AAPL" and m.description == "Apple Inc"
+    assert [s for s in store.get_signals() if s.kind == "symbol_search"] == []  # read-only
+
+
+def test_symbol_search_empty_without_connector(tmp_path, fake_embedder):
+    service, _store = _service(tmp_path, fake_embedder)
+
+    assert service.symbol_search("apple") == []
+
+
+def test_create_file_emits_content_free_signal(tmp_path, fake_embedder):
+    service, store = _service(tmp_path, fake_embedder)
+    target = tmp_path / "note.txt"
+
+    service.create_file(str(target), "secret content here")
+
+    [sig] = [s for s in store.get_signals() if s.kind == "fs_file"]
+    assert sig.payload["name"] == "note.txt"  # basename only
+    assert sig.payload["bytes"] == len(b"secret content here")
+    assert "secret content here" not in str(sig.payload)  # NEVER the content
+    assert "path" not in sig.payload  # never the full directory chain
+    assert target.read_text(encoding="utf-8") == "secret content here"
+
+
+def test_list_dir_emits_count_only_signal(tmp_path, fake_embedder):
+    service, store = _service(tmp_path, fake_embedder)
+    subdir = tmp_path / "sub"
+    service.create_folder(str(subdir))
+    service.create_file(str(subdir / "a.txt"))
+
+    service.list_dir(str(subdir))
+
+    [sig] = [s for s in store.get_signals() if s.kind == "fs_list"]
+    assert sig.payload["count"] == 1
+    assert "a.txt" not in str(sig.payload)  # names never logged
+
+
+def test_fs_writes_kill_switch_refuses(tmp_path, fake_embedder, monkeypatch):
+    monkeypatch.setenv("JARVIS_FS_WRITES_ENABLED", "0")
+    from jarvis.config import Config
+
+    monkeypatch.setattr("jarvis.service.config", Config())  # rebuild with the kill switch off
+    service, _store = _service(tmp_path, fake_embedder)
+    with pytest.raises(ValueError, match="disabled"):
+        service.create_file(str(tmp_path / "x.txt"), "hi")
 
 
 def test_ask_grounded_returns_result_and_one_signal(tmp_path, fake_embedder):

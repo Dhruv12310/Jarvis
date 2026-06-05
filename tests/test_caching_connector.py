@@ -72,3 +72,17 @@ def test_caching_connector_exposes_inner_identity():
     cc = CachingConnector(_CountingConnector(), _DictCache(), ttl_seconds=300)
     assert cc.name == "fake"
     assert "fake source" in cc.description
+
+
+def test_caching_connector_delegates_extra_capabilities_to_inner():
+    # Transparent decorator: a connector-specific method (e.g. MarketsConnector.search) is reachable
+    # through the cache even though the generic cache does not override it.
+    class _Searchable(_CountingConnector):
+        def search(self, query, limit=8):
+            return [("AAPL", "Apple Inc")]
+
+    cc = CachingConnector(_Searchable(), _DictCache(), ttl_seconds=300)
+    assert cc.search("apple") == [("AAPL", "Apple Inc")]
+    # a connector without the extra method stays without it (no phantom attributes)
+    plain = CachingConnector(_CountingConnector(), _DictCache(), ttl_seconds=300)
+    assert not hasattr(plain, "search")

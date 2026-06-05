@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Thin HUD scrollbars (feed + side rail) */
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(79, 216, 232, 0.18);
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(79, 216, 232, 0.32);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(79, 216, 232, 0.22) transparent;
+}

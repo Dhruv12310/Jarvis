@@ -24,6 +24,11 @@ ENV/
 htmlcov/
 .ipynb_checkpoints/
 
+# --- Web cockpit (Node) ---
+node_modules/
+/frontend/dist/
+.vite/
+
 # --- Jarvis runtime data (SQLite db + Chroma vector index; regenerated, never committed) ---
 /data/
 

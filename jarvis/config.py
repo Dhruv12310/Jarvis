@@ -32,6 +32,13 @@ class Config:
     ollama_host: str = field(
         default_factory=lambda: os.environ.get("JARVIS_OLLAMA_HOST", "http://localhost:11434")
     )
+    # Tier 2 cloud escalation (Anthropic) - the controlled exception. Empty key = local-only: the
+    # Model Router reports "unavailable" and Deep Dive is gracefully disabled. The key is read from
+    # ANTHROPIC_API_KEY (the SDK's own convention), not a JARVIS_ name, so the standard env works.
+    anthropic_api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
+    cloud_model: str = field(
+        default_factory=lambda: os.environ.get("JARVIS_CLOUD_MODEL", "claude-sonnet-4-6")
+    )
     db_path: Path = field(
         default_factory=lambda: Path(os.environ.get("JARVIS_DB_PATH", str(_DATA / "jarvis.db")))
     )
@@ -97,6 +104,15 @@ class Config:
     )
     cache_ttl_hn: int = field(
         default_factory=lambda: int(os.environ.get("JARVIS_CACHE_TTL_HN", "300"))
+    )
+    # Fundamentals (profile/financials/recommendation/news) change slowly: cached far longer than
+    # quotes so a company view costs at most a handful of Finnhub calls per hour.
+    cache_ttl_fundamentals: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_CACHE_TTL_FUNDAMENTALS", "3600"))
+    )
+    # GDELT global news refreshes ~every 15 min and rate-limits bursts hard, so cache ~that long.
+    cache_ttl_gdelt: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_CACHE_TTL_GDELT", "900"))
     )
 
     # Phase 2 memory retrieval (Core §7.1). Weights default to 1.0; lambda tunes recency
@@ -179,6 +195,12 @@ class Config:
     per_category_cap: int = field(
         default_factory=lambda: int(os.environ.get("JARVIS_PER_CATEGORY_CAP", "1"))
     )
+    # Goal-driven feed (PULL view). Per-goal cap on FETCHED items (connector + snippet); attached
+    # standing suggestions are not volume-capped. A pull surface, so the cap is for focus, not the
+    # strict abstention the PUSH ranker enforces.
+    goal_feed_per_goal_cap: int = field(
+        default_factory=lambda: int(os.environ.get("JARVIS_GOAL_FEED_PER_GOAL_CAP", "4"))
+    )
     entity_cooldown_hours: float = field(
         default_factory=lambda: float(os.environ.get("JARVIS_ENTITY_COOLDOWN_HOURS", "48"))
     )
@@ -209,6 +231,12 @@ class Config:
     digest_hour: int = field(default_factory=lambda: int(os.environ.get("JARVIS_DIGEST_HOUR", "7")))
     scheduler_interval_seconds: int = field(
         default_factory=lambda: int(os.environ.get("JARVIS_SCHEDULER_INTERVAL", "3600"))
+    )
+    # File operations (cockpit shortcut bar). Deterministic filesystem create/list with full-disk
+    # reach by design (no sandbox); the off-loopback write guard lives in the API layer. Set
+    # JARVIS_FS_WRITES_ENABLED=0 to kill create_file/create_folder entirely (list stays read-only).
+    fs_writes_enabled: bool = field(
+        default_factory=lambda: os.environ.get("JARVIS_FS_WRITES_ENABLED", "1") != "0"
     )
 
     def ensure_dirs(self) -> None:

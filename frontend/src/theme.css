@@ -1,0 +1,580 @@
+/* JARVIS — HYBRID HUD theme.
+   A solid-instrument board (eDEX density: reticles, tickers, sparklines, telemetry, bar gauges)
+   wrapped around a calm reading column, lit by arc-reactor cyan + rationed gold.
+   THE ONE RULE: glow is a STATE (focus / owned / live / alert), never a finish. The reading
+   column draws from an isolated --reading-* sub-palette that has NO glow token in scope, so prose
+   physically cannot bloom. Variable NAMES are stable; component code reads these tokens. */
+
+:root {
+  /* ── Fonts — IBM Plex, already self-hosted (trust boundary). Mono is the INSTRUMENT typeface:
+     it carries every label and every value. Sans carries only human reading. The display
+     "costume" is Mono at wide tracking — more eDEX-authentic than a script face. ──────────── */
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+
+  /* ── Background ramp — deep cool near-black with a true-blue undertone so emitted cyan reads
+     as LIGHT, not paint. Layers are contrasty so framed panels read as discrete instruments
+     sitting ON a board, never washes of one grey. Never pure black. ───────────────────────── */
+  --bg-void:        #05080d;  /* the board behind everything */
+  --bg-base:        #070b12;  /* app field / body ramp floor */
+  --bg-raised:      #0d141f;  /* status bar / dock / drawer */
+  --bg-panel:       #0b121c;  /* panel + card fill (solid instrument face) */
+  --bg-panel-solid: #0b121c;  /* alias kept for any @supports fallback call sites */
+  --bg-inset:       #060a10;  /* input wells, code, sparkline/bar troughs */
+
+  /* ── READING sub-palette — THE NO-GLOW ZONE. Deliberately flat + near-mono. Nothing here is
+     paired with a glow token anywhere in the stylesheet. This is the calm rule made physical. ── */
+  --reading-bg: #0a111b;  /* matte, slightly lifted, behind long-form bodies */
+  --reading-fg: #e9f1fb;  /* soft cool-white, AAA on the board */
+
+  /* ── Primary accent — ARC-REACTOR CYAN. The system's voice / focus / active / live. Lifted from
+     the old steel #5aa0e0 toward arc-reactor, but kept cool so it never reads candy-neon. ──── */
+  --arc:        #4fd8e8;
+  --arc-bright: #93ecf6;  /* hover peak, glow hotspot, breathe peak */
+  --arc-deep:   #25869b;  /* gradient dark stop, pressed, ring outer track */
+  --arc-glow:   rgba(79, 216, 232, 0.30);  /* INVOKED outer halo only (focus/active/live/arrival) */
+  --arc-faint:  rgba(120, 170, 195, 0.15); /* THE always-on hairline-border tint (cool blue-grey) */
+
+  /* ── Secondary accent — GOLD. RATIONED: only things the USER owns / must act on. Blue and gold
+     NEVER glow on the same component at once — that is a token misuse, not a state. ────────── */
+  --gold:        #e6b347;
+  --gold-bright: #f8cf6a;
+  --gold-deep:   #b5882c;  /* gold gradient dark stop / ring track */
+  --gold-faint:  rgba(230, 179, 71, 0.13);
+  --gold-glow:   rgba(230, 179, 71, 0.24);
+
+  /* ── Semantic roles (mirror the architecture diagram). ──────────────────────────────────── */
+  --teal:        #33b6a4;  /* heartbeat / always-on */
+  --purple:      #7d72e0;  /* brain / GPU */
+  --ok:          #41c490;
+  --warn:        #e6b347;  /* = gold */
+  --danger:      #e06b6b;
+  --danger-glow: rgba(224, 107, 107, 0.24);
+
+  /* ── Live-data semantics — eDEX needs up/down/idle as first-class tokens so live data must
+     DECLARE a sign before it can take color. ─────────────────────────────────────────────── */
+  --up:   #41c490;  /* positive delta / inbound */
+  --down: #e06b6b;  /* negative delta / outbound */
+  --idle: #5e7184;  /* dormant channel */
+
+  /* ── Ink (chrome, NOT reading — reading uses --reading-fg). ──────────────────────────────── */
+  --text-hi:     #e9f1f8;
+  --text-mid:    #9db0c2;
+  --text-low:    #5e7184;  /* mono labels live here */
+  --text-on-arc: #04121a;  /* dark ink on a filled cyan button */
+
+  /* ── Lines — three weights. Hairlines do the structural work; reticles use the lit one. ─── */
+  --line:         rgba(120, 170, 195, 0.14);
+  --line-strong:  rgba(120, 170, 195, 0.28);
+  --line-reticle: rgba(79, 216, 232, 0.42);  /* corner ticks / frame marks */
+
+  /* ── Blueprint grid + scan tints (the engineered board texture). ────────────────────────── */
+  --grid:        rgba(120, 170, 195, 0.038);
+  --grid-strong: rgba(120, 170, 195, 0.065);
+  --scan:        rgba(79, 216, 232, 0.05);
+
+  /* ── Per-kind left rail (set inline as --rail by Card per kind; default arc). ────────────── */
+  --rail: var(--arc);
+
+  /* ── Geometry — tight. Instruments have small, deliberate radii. No bubbly cards. ───────── */
+  --r-panel: 4px;
+  --r-card:  4px;
+  --r-chip:  2px;
+  --r-well:  4px;
+
+  /* ── Shared depth vocabulary (consistent lift everywhere). ──────────────────────────────── */
+  --depth-1:  0 1px 2px rgba(0, 0, 0, 0.45);
+  --depth-2:  0 1px 3px rgba(0, 0, 0, 0.5);
+  --inner-hi: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+
+  /* ── Motion knobs (single source of truth, read by CSS + JS). ───────────────────────────── */
+  --t-fast: 0.15s;
+  --t-base: 0.22s;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   THE BOARD — near-black + a two-scale blueprint hairline grid + a cool reactor wash top-right
+   + a whisper of gold bottom-left (owned-data corner). Reads as an instrument panel, never a
+   gradient hero.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+body {
+  margin: 0;
+  color: var(--text-hi);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background-color: var(--bg-void);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+    linear-gradient(var(--grid-strong) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-strong) 1px, transparent 1px),
+    radial-gradient(1100px 620px at 78% -12%, rgba(79, 216, 232, 0.06), transparent 70%),
+    radial-gradient(820px 520px at -6% 112%, rgba(230, 179, 71, 0.03), transparent 70%);
+  background-size:
+    28px 28px,    /* fine grid */
+    28px 28px,
+    140px 140px,  /* coarse grid — gives the board scale */
+    140px 140px,
+    100% 100%,
+    100% 100%;
+  background-attachment: fixed;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   PANEL — solid instrument face. Faint inner top-light = beveled metal catching light, NOT glow.
+   Crisp hairline + a thin drop so panels float a hair above the board. Glass is a surface;
+   glow is a state (added only by .hud-glow-*).
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.hud-glass {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 18%),
+    var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  box-shadow:
+    var(--inner-hi),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.22),
+    var(--depth-2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   GLOW-AS-STATE — focus / active / owned / alert ONLY. Border lights + a tight 1px inner ring +
+   a SMALL 12px outer halo. The halo is the only bloom allowed. RULE: arc & gold never coexist
+   on one component.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.hud-glow-active {
+  border-color: var(--line-reticle);
+  box-shadow:
+    var(--inner-hi),
+    inset 0 0 0 1px rgba(79, 216, 232, 0.16),
+    0 0 12px -4px var(--arc-glow),
+    var(--depth-1);
+}
+.hud-glow-gold {
+  border-color: rgba(230, 179, 71, 0.5);
+  box-shadow:
+    var(--inner-hi),
+    inset 0 0 0 1px rgba(230, 179, 71, 0.14),
+    0 0 12px -4px var(--gold-glow),
+    var(--depth-1);
+}
+.hud-glow-danger {
+  border-color: rgba(224, 107, 107, 0.55);
+  box-shadow:
+    var(--inner-hi),
+    inset 0 0 0 1px rgba(224, 107, 107, 0.14),
+    0 0 12px -4px var(--danger-glow),
+    var(--depth-1);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   PER-KIND LEFT SPINE — the primary kind cue. A 2px rail with graduated caps (instrument tick).
+   Glows by default (set --rail per kind). railFlare (motion.ts) animates THIS on arrival, never
+   the body. The "chat" echo is the one quiet kind: rail present, no glow.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.card-rail { position: relative; }
+.card-rail::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--rail) 6px,
+    var(--rail) calc(100% - 6px),
+    transparent
+  );
+  box-shadow: 0 0 8px -1px var(--rail);
+}
+.card-rail[data-kind="chat"]::before { box-shadow: none; opacity: 0.7; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   CORNER-RETICLE FRAME — the eDEX "this is an instrument" frame. .hud-reticle stamps two
+   L-corners (TL + BR) via ::before/::after; add a child <span class="hud-reticle-x"> for the
+   other two (TR + BL). Keeps it pure-CSS with no inline markup soup. On a focused panel, add
+   .is-lit (or .hud-glow-active) to raise the ticks to lit cyan.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.hud-reticle { position: relative; }
+.hud-reticle::before,
+.hud-reticle::after {
+  content: "";
+  position: absolute;
+  width: 9px; height: 9px;
+  pointer-events: none;
+  border: 1px solid var(--line-reticle);
+}
+.hud-reticle::before { top: -1px;  left: -1px;  border-right: none; border-bottom: none; }
+.hud-reticle::after  { right: -1px; bottom: -1px; border-left: none;  border-top: none; }
+.hud-reticle-x::before,
+.hud-reticle-x::after {
+  content: "";
+  position: absolute;
+  width: 9px; height: 9px;
+  pointer-events: none;
+  border: 1px solid var(--line-reticle);
+}
+.hud-reticle-x::before { top: -1px;    right: -1px; border-left: none;  border-bottom: none; }
+.hud-reticle-x::after  { bottom: -1px; left: -1px;  border-right: none; border-top: none; }
+.hud-reticle.is-lit,
+.hud-reticle.hud-glow-active { --line-reticle: rgba(79, 216, 232, 0.7); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   GRID + SCANLINE OVERLAYS — drop INSIDE cinematic edge widgets ONLY (monitors / map / tickers),
+   NEVER inside .prose-hud. Content above must get position: relative; z-index: 1.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.hud-grid-overlay {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image:
+    linear-gradient(var(--grid-strong) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-strong) 1px, transparent 1px);
+  background-size: 18px 18px;
+  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.12));
+          mask-image: linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.12));
+  opacity: 0.7;
+}
+.hud-scanline {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
+}
+.hud-scanline::after {
+  content: "";
+  position: absolute; left: 0; right: 0;
+  height: 30%; top: -30%;
+  background: linear-gradient(180deg, transparent, var(--scan) 60%, transparent);
+  animation: hud-scan 7.5s linear infinite;
+}
+@keyframes hud-scan { to { transform: translateY(460%); } }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   TICKER / MARQUEE — the eDEX live-readout column. Mono, tabular, scrolls horizontally; edges
+   fade so values dissolve into the frame. DUPLICATE the item set in markup so translateX(-50%)
+   loops seamlessly. Hover pauses so the user can read a row.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.hud-ticker {
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+  height: 22px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+}
+.hud-ticker-track {
+  display: inline-flex;
+  will-change: transform;
+  animation: hud-ticker 38s linear infinite;
+  font-variant-numeric: tabular-nums;
+}
+.hud-ticker:hover .hud-ticker-track { animation-play-state: paused; }
+.hud-ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-mid);
+  border-right: 1px solid var(--line);
+}
+.hud-ticker-item .lbl { color: var(--text-low); text-transform: uppercase; letter-spacing: 0.12em; font-size: 9.5px; }
+.hud-ticker-item .sym { color: var(--text-hi); }
+.hud-ticker-item .up   { color: var(--up); }
+.hud-ticker-item .down { color: var(--down); }
+/* a tiny leading hex bullet per readout — the engineered detail */
+.hud-ticker-item::before {
+  content: ""; width: 5px; height: 6px; background: currentColor; opacity: 0.45;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+@keyframes hud-ticker { to { transform: translateX(-50%); } }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   SPARKLINE — a fixed-height trough an inline <svg> polyline/path draws into. The trough owns
+   the baseline + faint fill so even a flat series reads as "a gauge." Color declares a sign.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.hud-spark {
+  position: relative;
+  height: 30px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+  background-image: linear-gradient(var(--arc-faint), var(--arc-faint));
+  background-size: 100% 1px;
+  background-position: 0 50%;
+  background-repeat: no-repeat;
+}
+.hud-spark::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--line);
+}
+.hud-spark svg { display: block; width: 100%; height: 100%; }
+.hud-spark .spark-stroke {
+  fill: none;
+  stroke: var(--arc);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 3px var(--arc-glow));
+}
+.hud-spark .spark-fill { fill: var(--arc-glow); opacity: 0.5; }
+.hud-spark.is-up   .spark-stroke { stroke: var(--up);   filter: drop-shadow(0 0 3px rgba(65,196,144,0.3)); }
+.hud-spark.is-down .spark-stroke { stroke: var(--down); filter: drop-shadow(0 0 3px var(--danger-glow)); }
+.hud-spark.is-gold .spark-stroke { stroke: var(--gold); filter: drop-shadow(0 0 3px var(--gold-glow)); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   TELEMETRY MICRO-READOUT — the eDEX micro-stat row: mono LABEL ···· VALUE with a dotted leader.
+   <div class="telemetry"><span class="t-label">CPU</span><span class="t-dots"></span>
+   <span class="t-value up">42%</span></div>
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.telemetry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.telemetry .t-label {
+  color: var(--text-low);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+.telemetry .t-dots {
+  flex: 1; align-self: center; height: 1px;
+  background-image: linear-gradient(90deg, var(--line) 50%, transparent 50%);
+  background-size: 5px 1px; background-repeat: repeat-x;
+  opacity: 0.7;
+}
+.telemetry .t-value { color: var(--text-hi); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.telemetry .t-value.up   { color: var(--up); }
+.telemetry .t-value.down { color: var(--down); }
+.telemetry .t-value.idle { color: var(--idle); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   LIVE READOUT TILE — the larger labelled stat block (eDEX monitor tile): mono value + micro
+   label + optional unit, tabular so columns align. Active tile = hairline-to-glow promotion.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.readout {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 10px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--r-well);
+}
+.readout-label {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-low);
+}
+.readout-value {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+}
+.readout-value .unit { font-size: 11px; color: var(--text-low); margin-left: 3px; }
+.readout[data-trend="up"]   .readout-value { color: var(--up); }
+.readout[data-trend="down"] .readout-value { color: var(--down); }
+.readout[data-active] {
+  border-color: rgba(79, 216, 232, 0.4);
+  box-shadow: inset 0 0 12px -4px var(--arc-glow);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   BAR GAUGE — horizontal CPU/MEM-style fill for system-monitor widgets. <i> is the fill;
+   set transform-origin: left and drive scaleX via barFill().
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.hud-bar {
+  position: relative;
+  height: 6px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.hud-bar > i {
+  display: block; height: 100%; transform-origin: left;
+  background: linear-gradient(90deg, var(--arc-deep), var(--arc));
+  box-shadow: 0 0 8px -2px var(--arc-glow);
+}
+.hud-bar.is-warn   > i { background: linear-gradient(90deg, #8a6a1f, var(--gold));   box-shadow: 0 0 8px -2px var(--gold-glow); }
+.hud-bar.is-danger > i { background: linear-gradient(90deg, #8a2f2f, var(--danger)); box-shadow: 0 0 8px -2px var(--danger-glow); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   HEXAGON NODE — the JARVIS hex motif for SystemPills / map endpoints / collector nodes.
+   14px clipped hex; fill tinted by state via --hex. Pulses only when active (hexPulse).
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.hud-hex {
+  width: 14px; height: 16px;
+  background: var(--hex, var(--arc));
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  box-shadow: 0 0 8px -2px var(--hex, var(--arc-glow));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   STATUS PILL — tiny live-channel indicator (dot + mono label), the eDEX "online" tell. Dot
+   only halos when .is-live / .is-warn / .is-down (a real channel state).
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.status-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-low);
+}
+.status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--idle); }
+.status-pill.is-live .dot { background: var(--ok);     box-shadow: 0 0 8px -1px var(--ok); }
+.status-pill.is-warn .dot { background: var(--warn);   box-shadow: 0 0 8px -1px var(--warn); }
+.status-pill.is-down .dot { background: var(--danger); box-shadow: 0 0 8px -1px var(--danger); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   ARC-REACTOR + ARC-RING — the single hero object (status bar) and the ring-gauge primitive
+   (goals / finance / send). SVG strokes; housing dashes = the literal Iron Man reactor coils.
+   The ONLY place a full circle is allowed. is-gold / is-alert swap the lit color.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.reactor { display: block; }
+.reactor-track   { stroke: var(--arc-faint); stroke-width: 2; fill: none; }
+.reactor-housing { stroke: var(--arc-deep); stroke-width: 3; fill: none; stroke-dasharray: 6 5; stroke-linecap: round; }
+.reactor-value   { stroke: var(--arc); stroke-width: 2.5; fill: none; stroke-linecap: round; filter: drop-shadow(0 0 4px var(--arc-glow)); }
+.reactor-core    { fill: var(--arc-bright); filter: drop-shadow(0 0 6px var(--arc-glow)); }
+.reactor.is-gold  .reactor-value { stroke: var(--gold); filter: drop-shadow(0 0 4px var(--gold-glow)); }
+.reactor.is-gold  .reactor-core  { fill: var(--gold-bright); filter: drop-shadow(0 0 6px var(--gold-glow)); }
+.reactor.is-alert .reactor-housing { stroke: var(--danger); }
+.reactor.is-alert .reactor-core    { fill: var(--danger); filter: drop-shadow(0 0 6px var(--danger-glow)); }
+
+/* arc-ring primitive (ArcRing.tsx vocabulary) */
+.arc-ring-track { stroke: var(--arc-faint); stroke-width: 2; fill: none; }
+.arc-ring-value { stroke: var(--arc); stroke-width: 2.5; fill: none; stroke-linecap: round; filter: drop-shadow(0 0 4px var(--arc-glow)); }
+.arc-ring-gold  .arc-ring-value { stroke: var(--gold); filter: drop-shadow(0 0 4px var(--gold-glow)); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   CHROME SUPPORTING CAST — inset well / divider / button / labels / chip.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.hud-inset {
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--r-well);
+  box-shadow: inset 0 1px 6px rgba(0, 0, 0, 0.4);
+}
+.hr { height: 1px; background: linear-gradient(90deg, transparent, var(--arc-faint), transparent); }
+
+.hud-btn {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-mid);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-well);
+  padding: 8px 12px;
+  transition: border-color var(--t-base) ease, color var(--t-base) ease, background var(--t-base) ease, box-shadow var(--t-base) ease;
+  cursor: pointer;
+}
+.hud-btn:hover {
+  color: var(--text-hi);
+  border-color: rgba(79, 216, 232, 0.55);
+  background: rgba(79, 216, 232, 0.06);
+  box-shadow: 0 0 12px -4px var(--arc-glow);
+}
+.hud-btn:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+.hud-btn[data-accent="gold"] {
+  color: var(--gold-bright);
+  border-color: rgba(230, 179, 71, 0.45);
+}
+.hud-btn[data-accent="gold"]:hover {
+  border-color: rgba(230, 179, 71, 0.7);
+  background: rgba(230, 179, 71, 0.06);
+  box-shadow: 0 0 12px -4px var(--gold-glow);
+}
+
+.region-label {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 10.5px;
+  line-height: 1.2;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-low);
+}
+.chip {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-low);
+  border: 1px solid var(--line);
+  border-radius: var(--r-chip);
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   READING COLUMN — THE NO-GLOW ZONE made physical. Draws from --reading-* only; NO glow token
+   is in scope here by design. IBM Plex Sans at 1.65 over matte navy, capped measure. The matte
+   --reading-bg never frosts, never blooms. Comfortable for hours. This IS the rule made physical.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+.prose-hud {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--reading-fg);
+  background: var(--reading-bg);
+  max-width: 720px;            /* comfortable measure even on a 27" */
+}
+.prose-hud p { margin: 0 0 0.7em; }
+.prose-hud p:last-child { margin-bottom: 0; }
+.prose-hud a {
+  color: var(--arc);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(79, 216, 232, 0.35);
+}
+.prose-hud a:hover { border-bottom-color: var(--arc); }
+.prose-hud strong { font-weight: 600; color: #fff; }
+.prose-hud ul, .prose-hud ol { margin: 0 0 0.7em; padding-left: 1.25em; }
+.prose-hud li { margin: 0.15em 0; }
+.prose-hud code {
+  font-family: var(--font-mono); font-size: 0.86em;
+  background: var(--bg-inset); padding: 0.1em 0.35em; border-radius: 3px;
+}
+.prose-hud pre {
+  font-family: var(--font-mono);
+  background: var(--bg-inset); border: 1px solid var(--line);
+  border-radius: 4px; padding: 12px 14px; overflow-x: auto; font-size: 12.5px;
+}
+.prose-hud h1, .prose-hud h2, .prose-hud h3 {
+  font-family: var(--font-sans); font-weight: 600; letter-spacing: 0;
+  margin: 0.5em 0 0.35em; color: var(--text-hi);
+}
+
+/* ── Reduced motion: kill every loop, keep one fast fade. Mirrors motion.ts gating. ────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: var(--t-fast) !important;
+  }
+}
